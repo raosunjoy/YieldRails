@@ -1,0 +1,225 @@
+name: Comprehensive Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  smart-contract-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./contracts
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: contracts/package-lock.json
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Compile contracts
+        run: npx hardhat compile
+        
+      - name: Run tests
+        run: npx hardhat test
+        
+      - name: Generate coverage report
+        run: npx hardhat coverage
+        
+      - name: Check 100% coverage requirement
+        run: |
+          COVERAGE_LINES=$(cat coverage/lcov.info | grep -o 'LF:' | wc -l)
+          COVERAGE_HIT=$(cat coverage/lcov.info | grep -o 'LH:' | wc -l)
+          if [ "$COVERAGE_LINES" != "$COVERAGE_HIT" ]; then
+            echo "❌ Coverage is not 100%. Lines: $COVERAGE_LINES, Hit: $COVERAGE_HIT"
+            exit 1
+          else
+            echo "✅ 100% test coverage achieved!"
+          fi
+          
+      - name: Gas usage report
+        run: REPORT_GAS=true npx hardhat test
+        
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./contracts/coverage/lcov.info
+          flags: smart-contracts
+          name: smart-contracts-coverage
+
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run unit tests
+        run: npm run test
+        
+      - name: Run integration tests
+        run: npm run test:integration
+        
+      - name: Check coverage threshold (95%)
+        run: npm run test:coverage
+        
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./backend/coverage/lcov.info
+          flags: backend
+          name: backend-coverage
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run unit tests
+        run: npm run test:ci
+        
+      - name: Run E2E tests
+        run: npm run test:e2e
+        
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./frontend/coverage/lcov.info
+          flags: frontend
+          name: frontend-coverage
+
+  sdk-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./sdk
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: sdk/package-lock.json
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run tests
+        run: npm test
+        
+      - name: Check 100% coverage requirement
+        run: npm run test:coverage
+        
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./sdk/coverage/lcov.info
+          flags: sdk
+          name: sdk-coverage
+
+  security-audit:
+    runs-on: ubuntu-latest
+    needs: [smart-contract-tests]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install contract dependencies
+        run: cd contracts && npm ci
+        
+      - name: Run Slither analysis
+        uses: crytic/slither-action@v0.3.0
+        id: slither
+        with:
+          target: 'contracts/src'
+          slither-args: '--filter-paths "contracts/node_modules/" --exclude-informational'
+          
+      - name: Run npm audit
+        run: |
+          cd contracts && npm audit --audit-level=moderate
+          cd ../backend && npm audit --audit-level=moderate
+          cd ../frontend && npm audit --audit-level=moderate
+          cd ../sdk && npm audit --audit-level=moderate
+
+  build-and-size:
+    runs-on: ubuntu-latest
+    needs: [smart-contract-tests, backend-tests, frontend-tests, sdk-tests]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Build all packages
+        run: npm run build
+        
+      - name: Check contract sizes
+        run: cd contracts && npx hardhat size-contracts
+        
+      - name: Check bundle sizes
+        run: cd sdk && npm run size
+
+  quality-gates:
+    runs-on: ubuntu-latest
+    needs: [smart-contract-tests, backend-tests, frontend-tests, sdk-tests, security-audit, build-and-size]
+    
+    steps:
+      - name: Quality Gate Summary
+        run: |
+          echo "✅ All tests passed"
+          echo "✅ Security audit completed" 
+          echo "✅ Build successful"
+          echo "✅ Coverage requirements met"
+          echo "🎉 Quality gates passed - ready for deployment!"

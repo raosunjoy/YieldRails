@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Code coverage report for src/interfaces/IYieldStrategy.sol</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../prettify.css" />
+    <link rel="stylesheet" href="../../base.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+<body>
+<div class='wrapper'>
+  <div class='pad1'>
+    <h1>
+      <a href="../../index.html">all files</a> / <a href="index.html">src/interfaces/</a> IYieldStrategy.sol
+    </h1>
+    <div class='clearfix'>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Statements</span>
+        <span class='fraction'>0/0</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Branches</span>
+        <span class='fraction'>0/0</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Functions</span>
+        <span class='fraction'>0/0</span>
+      </div>
+      <div class='fl pad1y space-right2'>
+        <span class="strong">100% </span>
+        <span class="quiet">Lines</span>
+        <span class='fraction'>0/0</span>
+      </div>
+    </div>
+  </div>
+  <div class='status-line high'></div>
+<pre><table class="coverage">
+<tr><td class="line-count quiet">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+101
+102
+103
+104
+105
+106
+107
+108
+109
+110
+111
+112
+113
+114
+115
+116
+117
+118
+119
+120
+121
+122
+123
+124
+125
+126
+127
+128
+129
+130
+131
+132
+133
+134
+135
+136
+137
+138
+139
+140
+141
+142
+143
+144
+145
+146
+147
+148
+149
+150
+151
+152
+153
+154
+155
+156
+157
+158
+159
+160
+161
+162
+163
+164
+165
+166
+167
+168
+169
+170
+171
+172
+173
+174
+175
+176
+177
+178
+179
+180
+181
+182
+183
+184
+185
+186
+187
+188
+189
+190
+191
+192
+193
+194
+195
+196
+197
+198
+199</td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+&nbsp;
+/**
+ * @title IYieldStrategy
+ * @dev Interface for yield generation strategies in YieldRails
+ * @notice All yield strategies must implement this interface for compatibility
+ * @author YieldRails Team
+ */
+interface IYieldStrategy {
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+    // EVENTS
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+&nbsp;
+    /**
+     * @dev Emitted when funds are deposited into the strategy
+     * @param user The address that deposited funds
+     * @param amount The amount deposited
+     * @param shares The number of shares minted
+     */
+    event Deposit(address indexed user, uint256 amount, uint256 shares);
+&nbsp;
+    /**
+     * @dev Emitted when funds are withdrawn from the strategy
+     * @param user The address that withdrew funds
+     * @param amount The amount withdrawn
+     * @param shares The number of shares burned
+     */
+    event Withdrawal(address indexed user, uint256 amount, uint256 shares);
+&nbsp;
+    /**
+     * @dev Emitted when yield is harvested
+     * @param yieldAmount The amount of yield harvested
+     * @param newTotalAssets The new total assets under management
+     */
+    event YieldHarvested(uint256 yieldAmount, uint256 newTotalAssets);
+&nbsp;
+    /**
+     * @dev Emitted when strategy parameters are updated
+     * @param parameter The parameter that was updated
+     * @param oldValue The old value
+     * @param newValue The new value
+     */
+    event StrategyUpdated(string parameter, uint256 oldValue, uint256 newValue);
+&nbsp;
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+    // STRUCTS
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+&nbsp;
+    /**
+     * @dev Strategy metadata and performance metrics
+     */
+    struct StrategyInfo {
+        string name;                // Strategy name (e.g., "T-Bill Strategy")
+        string description;         // Strategy description
+        uint256 totalAssets;        // Total assets under management
+        uint256 totalShares;        // Total shares outstanding
+        uint256 currentAPY;         // Current APY in basis points (e.g., 400 = 4%)
+        uint256 riskScore;          // Risk score from 1-10 (1 = lowest risk)
+        uint256 lastHarvest;        // Timestamp of last yield harvest
+        bool active;                // Whether strategy is active
+    }
+&nbsp;
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+    // DEPOSIT &amp; WITHDRAWAL FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+&nbsp;
+    /**
+     * @dev Deposits assets into the yield strategy
+     * @param amount The amount of assets to deposit
+     * @return shares The number of shares minted to the depositor
+     */
+    function deposit(uint256 amount) external returns (uint256 shares);
+&nbsp;
+    /**
+     * @dev Withdraws assets from the yield strategy
+     * @param shares The number of shares to burn
+     * @return amount The amount of assets withdrawn
+     */
+    function withdraw(uint256 shares) external returns (uint256 amount);
+&nbsp;
+    /**
+     * @dev Emergency withdrawal of all user funds (may incur penalties)
+     * @param user The address to withdraw funds for
+     * @return amount The amount of assets withdrawn
+     */
+    function emergencyWithdraw(address user) external returns (uint256 amount);
+&nbsp;
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+    // YIELD CALCULATION FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+&nbsp;
+    /**
+     * @dev Calculates the current APY of the strategy
+     * @return apy The current APY in basis points
+     */
+    function getCurrentAPY() external view returns (uint256 apy);
+&nbsp;
+    /**
+     * @dev Calculates yield generated for a specific user
+     * @param user The user address
+     * @return yieldAmount The amount of yield generated
+     */
+    function calculateUserYield(address user) external view returns (uint256 yieldAmount);
+&nbsp;
+    /**
+     * @dev Calculates the total yield generated by the strategy
+     * @return totalYield The total yield generated
+     */
+    function getTotalYieldGenerated() external view returns (uint256 totalYield);
+&nbsp;
+    /**
+     * @dev Harvests yield from the underlying protocol
+     * @return yieldHarvested The amount of yield harvested
+     */
+    function harvestYield() external returns (uint256 yieldHarvested);
+&nbsp;
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+    // SHARE CALCULATION FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+&nbsp;
+    /**
+     * @dev Converts assets to shares
+     * @param assets The amount of assets
+     * @return shares The equivalent number of shares
+     */
+    function convertToShares(uint256 assets) external view returns (uint256 shares);
+&nbsp;
+    /**
+     * @dev Converts shares to assets
+     * @param shares The number of shares
+     * @return assets The equivalent amount of assets
+     */
+    function convertToAssets(uint256 shares) external view returns (uint256 assets);
+&nbsp;
+    /**
+     * @dev Gets the user's share balance
+     * @param user The user address
+     * @return balance The user's share balance
+     */
+    function balanceOf(address user) external view returns (uint256 balance);
+&nbsp;
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+    // STRATEGY INFORMATION FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+&nbsp;
+    /**
+     * @dev Gets comprehensive strategy information
+     * @return info The strategy information struct
+     */
+    function getStrategyInfo() external view returns (StrategyInfo memory info);
+&nbsp;
+    /**
+     * @dev Gets the underlying asset address
+     * @return asset The address of the underlying asset (e.g., USDC)
+     */
+    function asset() external view returns (address asset);
+&nbsp;
+    /**
+     * @dev Gets the total assets under management
+     * @return totalManagedAssets The total assets managed by this strategy
+     */
+    function totalAssets() external view returns (uint256 totalManagedAssets);
+&nbsp;
+    /**
+     * @dev Gets the strategy's risk score
+     * @return risk The risk score from 1-10 (1 = lowest risk)
+     */
+    function getRiskScore() external view returns (uint256 risk);
+&nbsp;
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+    // PERFORMANCE FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+&nbsp;
+    /**
+     * @dev Gets historical performance data
+     * @param period The time period to look back (in seconds)
+     * @return performance The performance data for the specified period
+     */
+    function getPerformanceData(uint256 period) external view returns (uint256 performance);
+&nbsp;
+    /**
+     * @dev Checks if the strategy is profitable
+     * @return profitable Whether the strategy is currently profitable
+     */
+    function isProfitable() external view returns (bool profitable);
+&nbsp;
+    /**
+     * @dev Gets the maximum capacity of the strategy
+     * @return maxCapacity The maximum amount of assets the strategy can handle
+     */
+    function maxCapacity() external view returns (uint256 maxCapacity);
+&nbsp;
+    /**
+     * @dev Gets the current utilization rate
+     * @return utilization The utilization rate as a percentage (basis points)
+     */
+    function utilizationRate() external view returns (uint256 utilization);
+}</pre></td></tr>
+</table></pre>
+<div class='push'></div><!-- for sticky footer -->
+</div><!-- /wrapper -->
+<div class='footer quiet pad2 space-top1 center small'>
+  Code coverage
+  generated by <a href="http://istanbul-js.org/" target="_blank">istanbul</a> at Sat Jul 12 2025 19:28:20 GMT+0530 (India Standard Time)
+</div>
+</div>
+<script src="../../prettify.js"></script>
+<script>
+window.onload = function () {
+        if (typeof prettyPrint === 'function') {
+            prettyPrint();
+        }
+};
+</script>
+<script src="../../sorter.js"></script>
+</body>
+</html>

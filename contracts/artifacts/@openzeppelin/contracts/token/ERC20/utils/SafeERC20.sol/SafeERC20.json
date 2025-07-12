@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "SafeERC20",
+  "sourceName": "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea2646970667358221220be2a5b4afb5e9ece7c2b05c9b631198c7b2dc325701cdcc2369ea8b6afff627064736f6c63430008140033",
+  "deployedBytecode": "0x600080fdfea2646970667358221220be2a5b4afb5e9ece7c2b05c9b631198c7b2dc325701cdcc2369ea8b6afff627064736f6c63430008140033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

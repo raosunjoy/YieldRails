@@ -1,0 +1,103 @@
+{
+  "name": "@yieldrails/sdk",
+  "version": "0.1.0",
+  "description": "YieldRails TypeScript SDK for developers",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rollup -c rollup.config.js",
+    "build:watch": "rollup -c rollup.config.js -w",
+    "dev": "npm run build:watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "clean": "rm -rf dist coverage",
+    "docs": "typedoc src/index.ts",
+    "prepublishOnly": "npm run clean && npm run build && npm test",
+    "size": "bundlesize"
+  },
+  "keywords": [
+    "yieldrails",
+    "sdk",
+    "typescript",
+    "payments",
+    "yield",
+    "stablecoin",
+    "defi",
+    "blockchain"
+  ],
+  "author": "YieldRails Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YieldRails/sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YieldRails/sdk/issues"
+  },
+  "homepage": "https://docs.yieldrails.com/sdk",
+  "dependencies": {
+    "ethers": "^6.7.0",
+    "axios": "^1.4.0",
+    "ws": "^8.13.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.3",
+    "@rollup/plugin-node-resolve": "^15.1.0",
+    "@rollup/plugin-typescript": "^11.1.2",
+    "@types/jest": "^29.5.3",
+    "@types/node": "^20.4.5",
+    "@types/ws": "^8.5.5",
+    "@typescript-eslint/eslint-plugin": "^6.2.0",
+    "@typescript-eslint/parser": "^6.2.0",
+    "bundlesize": "^0.18.1",
+    "eslint": "^8.45.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "jest": "^29.6.1",
+    "prettier": "^3.0.0",
+    "rollup": "^3.26.3",
+    "rollup-plugin-dts": "^5.3.1",
+    "ts-jest": "^29.1.1",
+    "tslib": "^2.6.1",
+    "typedoc": "^0.24.8",
+    "typescript": "^5.1.6"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/__tests__/**/*.ts", "**/*.test.ts"],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.d.ts",
+      "!src/index.ts"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 100,
+        "functions": 100,
+        "lines": 100,
+        "statements": 100
+      }
+    }
+  },
+  "bundlesize": [
+    {
+      "path": "./dist/index.js",
+      "maxSize": "50 kB"
+    }
+  ],
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

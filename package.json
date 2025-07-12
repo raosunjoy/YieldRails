@@ -1,0 +1,82 @@
+{
+  "name": "yieldrails",
+  "version": "0.1.0",
+  "description": "The Yield-Powered Cross-Border Payment Rail",
+  "main": "index.js",
+  "private": true,
+  "workspaces": [
+    "contracts",
+    "backend",
+    "frontend", 
+    "sdk"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm run install:workspaces",
+    "install:workspaces": "npm install --workspaces",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "test:coverage": "npm run test:coverage --workspaces",
+    "lint": "npm run lint --workspaces",
+    "lint:fix": "npm run lint:fix --workspaces",
+    "clean": "npm run clean --workspaces && rm -rf node_modules",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:contracts": "npm run dev --workspace=contracts",
+    "deploy:contracts": "npm run deploy --workspace=contracts",
+    "deploy:testnet": "npm run deploy:testnet --workspace=contracts",
+    "deploy:mainnet": "npm run deploy:mainnet --workspace=contracts",
+    "security:audit": "npm audit --audit-level=moderate && npm run security:contracts",
+    "security:contracts": "npm run security --workspace=contracts",
+    "prepare": "echo 'Skipping husky install for now'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YieldRails/core.git"
+  },
+  "keywords": [
+    "stablecoin",
+    "payments",
+    "yield",
+    "defi",
+    "cross-border",
+    "usdc",
+    "rlusd",
+    "ethereum",
+    "xrpl",
+    "solana"
+  ],
+  "author": "YieldRails Team",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/YieldRails/core/issues"
+  },
+  "homepage": "https://yieldrails.com",
+  "devDependencies": {
+    "@commitlint/cli": "^17.7.1",
+    "@commitlint/config-conventional": "^17.7.0",
+    "concurrently": "^8.2.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^13.2.3",
+    "prettier": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "commitlint": {
+    "extends": ["@commitlint/config-conventional"]
+  },
+  "lint-staged": {
+    "*.{js,ts,tsx}": ["prettier --write", "eslint --fix"],
+    "*.{json,md}": ["prettier --write"],
+    "*.sol": ["prettier --write"]
+  },
+  "prettier": {
+    "semi": true,
+    "trailingComma": "es5",
+    "singleQuote": true,
+    "printWidth": 80,
+    "tabWidth": 2
+  }
+}
