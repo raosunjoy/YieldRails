@@ -1,0 +1,536 @@
+// YieldRails Database Schema
+// Complete data model for yield-powered payment rails
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================================
+// USER MANAGEMENT
+// ================================
+
+model User {
+  id                String            @id @default(cuid())
+  email             String            @unique
+  hashedPassword    String?
+  walletAddress     String?           @unique
+  firstName         String?
+  lastName          String?
+  phoneNumber       String?
+  kycStatus         KYCStatus         @default(PENDING)
+  isActive          Boolean           @default(true)
+  role              UserRole          @default(USER)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  lastLoginAt       DateTime?
+  
+  // Relations
+  payments          Payment[]
+  yieldEarnings     YieldEarning[]
+  notifications     Notification[]
+  apiKeys           ApiKey[]
+  sessions          UserSession[]
+  kycDocument       KYCDocument?
+  userPreferences   UserPreferences?
+  
+  @@map("users")
+}
+
+model UserSession {
+  id              String    @id @default(cuid())
+  userId          String
+  sessionToken    String    @unique
+  refreshToken    String?   @unique
+  deviceInfo      String?
+  ipAddress       String?
+  userAgent       String?
+  isActive        Boolean   @default(true)
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  lastAccessedAt  DateTime  @default(now())
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_sessions")
+}
+
+model UserPreferences {
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  defaultCurrency         String   @default("USD")
+  notificationSettings    Json     @default("{}")
+  yieldOptimization       Boolean  @default(true)
+  autoReinvest            Boolean  @default(false)
+  maxSlippage             Decimal  @default(0.01)
+  preferredChains         String[] @default(["ethereum"])
+  
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_preferences")
+}
+
+// ================================
+// KYC & COMPLIANCE
+// ================================
+
+model KYCDocument {
+  id              String      @id @default(cuid())
+  userId          String      @unique
+  documentType    DocumentType
+  documentNumber  String
+  documentUrl     String?
+  verificationStatus VerificationStatus @default(PENDING)
+  submittedAt     DateTime    @default(now())
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  notes           String?
+  
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("kyc_documents")
+}
+
+// ================================
+// PAYMENT SYSTEM
+// ================================
+
+model Payment {
+  id                    String            @id @default(cuid())
+  userId                String
+  merchantId            String?
+  amount                Decimal           @db.Decimal(18, 6)
+  currency              String            @default("USD")
+  tokenAddress          String?
+  tokenSymbol           String?
+  status                PaymentStatus     @default(PENDING)
+  type                  PaymentType       @default(PAYMENT)
+  
+  // Network Information
+  sourceChain           String
+  destinationChain      String?
+  sourceTransactionHash String?
+  destTransactionHash   String?
+  
+  // Addresses
+  senderAddress         String
+  recipientAddress      String
+  escrowAddress         String?
+  
+  // Yield Information
+  estimatedYield        Decimal?          @db.Decimal(18, 6)
+  actualYield           Decimal?          @db.Decimal(18, 6)
+  yieldDuration         Int?              // seconds
+  yieldStrategy         String?
+  
+  // Fees
+  platformFee           Decimal?          @db.Decimal(18, 6)
+  networkFee            Decimal?          @db.Decimal(18, 6)
+  totalFees             Decimal?          @db.Decimal(18, 6)
+  
+  // Metadata
+  description           String?
+  metadata              Json?
+  externalReference     String?
+  
+  // Timestamps
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  confirmedAt           DateTime?
+  releasedAt            DateTime?
+  expiresAt             DateTime?
+  
+  // Relations
+  user                  User              @relation(fields: [userId], references: [id])
+  merchant              Merchant?         @relation(fields: [merchantId], references: [id])
+  yieldEarnings         YieldEarning[]
+  paymentEvents         PaymentEvent[]
+  crossChainTransactions CrossChainTransaction[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([sourceChain])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+model PaymentEvent {
+  id                String            @id @default(cuid())
+  paymentId         String
+  eventType         PaymentEventType
+  transactionHash   String?
+  blockNumber       BigInt?
+  chainId           String?
+  gasUsed           BigInt?
+  gasPrice          BigInt?
+  eventData         Json?
+  createdAt         DateTime          @default(now())
+  
+  payment           Payment           @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  
+  @@index([paymentId])
+  @@index([eventType])
+  @@map("payment_events")
+}
+
+// ================================
+// YIELD SYSTEM
+// ================================
+
+model YieldStrategy {
+  id                    String            @id @default(cuid())
+  name                  String            @unique
+  description           String?
+  protocolName          String
+  chainId               String
+  contractAddress       String
+  strategyType          YieldStrategyType
+  expectedAPY           Decimal           @db.Decimal(5, 4)
+  riskLevel             RiskLevel         @default(MEDIUM)
+  minAmount             Decimal           @db.Decimal(18, 6)
+  maxAmount             Decimal?          @db.Decimal(18, 6)
+  isActive              Boolean           @default(true)
+  
+  // Configuration
+  strategyConfig        Json              @default("{}")
+  
+  // Performance Metrics
+  totalValueLocked      Decimal           @default(0) @db.Decimal(18, 6)
+  actualAPY             Decimal?          @db.Decimal(5, 4)
+  
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  
+  // Relations
+  yieldEarnings         YieldEarning[]
+  
+  @@index([chainId])
+  @@index([isActive])
+  @@map("yield_strategies")
+}
+
+model YieldEarning {
+  id                    String            @id @default(cuid())
+  userId                String
+  paymentId             String?
+  strategyId            String
+  
+  // Amounts
+  principalAmount       Decimal           @db.Decimal(18, 6)
+  yieldAmount           Decimal           @db.Decimal(18, 6)
+  feeAmount             Decimal           @default(0) @db.Decimal(18, 6)
+  netYieldAmount        Decimal           @db.Decimal(18, 6)
+  
+  // Token Information
+  tokenAddress          String
+  tokenSymbol           String
+  chainId               String
+  
+  // Period Information
+  startTime             DateTime
+  endTime               DateTime?
+  duration              Int?              // seconds
+  actualAPY             Decimal?          @db.Decimal(5, 4)
+  
+  // Status
+  status                YieldStatus       @default(ACTIVE)
+  transactionHash       String?
+  
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  
+  // Relations
+  user                  User              @relation(fields: [userId], references: [id])
+  payment               Payment?          @relation(fields: [paymentId], references: [id])
+  strategy              YieldStrategy     @relation(fields: [strategyId], references: [id])
+  
+  @@index([userId])
+  @@index([paymentId])
+  @@index([strategyId])
+  @@index([status])
+  @@map("yield_earnings")
+}
+
+// ================================
+// MERCHANT SYSTEM
+// ================================
+
+model Merchant {
+  id                    String            @id @default(cuid())
+  name                  String
+  email                 String            @unique
+  website               String?
+  description           String?
+  category              String?
+  
+  // Business Information
+  businessType          BusinessType      @default(ONLINE)
+  registrationNumber    String?
+  taxId                 String?
+  
+  // Settings
+  defaultCurrency       String            @default("USD")
+  supportedChains       String[]          @default(["ethereum"])
+  webhookUrl            String?
+  
+  // Status
+  isActive              Boolean           @default(true)
+  verificationStatus    VerificationStatus @default(PENDING)
+  
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  
+  // Relations
+  payments              Payment[]
+  apiKeys               ApiKey[]
+  
+  @@map("merchants")
+}
+
+model ApiKey {
+  id                    String            @id @default(cuid())
+  userId                String?
+  merchantId            String?
+  keyHash               String            @unique
+  keyPrefix             String
+  name                  String?
+  permissions           String[]          @default([])
+  isActive              Boolean           @default(true)
+  lastUsedAt            DateTime?
+  expiresAt             DateTime?
+  
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  
+  // Relations
+  user                  User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  merchant              Merchant?         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+// ================================
+// CROSS-CHAIN OPERATIONS
+// ================================
+
+model CrossChainTransaction {
+  id                    String                    @id @default(cuid())
+  paymentId             String?
+  sourceChain           String
+  destinationChain      String
+  sourceTransactionHash String?
+  destTransactionHash   String?
+  bridgeTransactionId   String?
+  
+  // Amounts
+  sourceAmount          Decimal                   @db.Decimal(18, 6)
+  destinationAmount     Decimal?                  @db.Decimal(18, 6)
+  bridgeFee             Decimal?                  @db.Decimal(18, 6)
+  
+  // Addresses
+  sourceAddress         String
+  destinationAddress    String
+  bridgeAddress         String?
+  
+  // Status
+  status                CrossChainStatus          @default(INITIATED)
+  
+  // Timestamps
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  sourceConfirmedAt     DateTime?
+  destConfirmedAt       DateTime?
+  
+  // Relations
+  payment               Payment?                  @relation(fields: [paymentId], references: [id])
+  
+  @@index([paymentId])
+  @@index([status])
+  @@index([sourceChain, destinationChain])
+  @@map("cross_chain_transactions")
+}
+
+// ================================
+// NOTIFICATIONS
+// ================================
+
+model Notification {
+  id                    String                    @id @default(cuid())
+  userId                String
+  type                  NotificationType
+  title                 String
+  message               String
+  data                  Json?
+  
+  // Status
+  isRead                Boolean                   @default(false)
+  isArchived            Boolean                   @default(false)
+  
+  // Delivery
+  channels              NotificationChannel[]     @default([EMAIL])
+  sentAt                DateTime?
+  deliveredAt           DateTime?
+  
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  
+  // Relations
+  user                  User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// ================================
+// SYSTEM & ANALYTICS
+// ================================
+
+model SystemMetrics {
+  id                    String            @id @default(cuid())
+  metricName            String
+  metricValue           Decimal           @db.Decimal(18, 6)
+  metricType            MetricType        @default(COUNTER)
+  chainId               String?
+  metadata              Json?
+  timestamp             DateTime          @default(now())
+  
+  @@index([metricName])
+  @@index([timestamp])
+  @@map("system_metrics")
+}
+
+// ================================
+// ENUMS
+// ================================
+
+enum UserRole {
+  USER
+  MERCHANT
+  ADMIN
+  OPERATOR
+  VALIDATOR
+}
+
+enum KYCStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum DocumentType {
+  PASSPORT
+  DRIVERS_LICENSE
+  NATIONAL_ID
+  UTILITY_BILL
+  BANK_STATEMENT
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentType {
+  PAYMENT
+  REMITTANCE
+  CROSS_BORDER
+  MERCHANT_PAYMENT
+  P2P
+}
+
+enum PaymentEventType {
+  CREATED
+  CONFIRMED
+  YIELD_STARTED
+  YIELD_EARNED
+  BRIDGE_INITIATED
+  BRIDGE_COMPLETED
+  RELEASED
+  FAILED
+  CANCELLED
+}
+
+enum YieldStrategyType {
+  LENDING
+  STAKING
+  LIQUIDITY_PROVIDING
+  TREASURY_BILLS
+  YIELD_FARMING
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+enum YieldStatus {
+  ACTIVE
+  COMPLETED
+  WITHDRAWN
+  FAILED
+}
+
+enum BusinessType {
+  ONLINE
+  PHYSICAL
+  MARKETPLACE
+  SERVICE_PROVIDER
+  NON_PROFIT
+}
+
+enum CrossChainStatus {
+  INITIATED
+  SOURCE_CONFIRMED
+  BRIDGE_PENDING
+  BRIDGE_COMPLETED
+  DESTINATION_PENDING
+  COMPLETED
+  FAILED
+}
+
+enum NotificationType {
+  PAYMENT_RECEIVED
+  PAYMENT_COMPLETED
+  YIELD_EARNED
+  CROSS_CHAIN_COMPLETED
+  KYC_APPROVED
+  KYC_REJECTED
+  SECURITY_ALERT
+  SYSTEM_UPDATE
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  PUSH
+  WEBHOOK
+}
+
+enum MetricType {
+  COUNTER
+  GAUGE
+  HISTOGRAM
+  SUMMARY
+}

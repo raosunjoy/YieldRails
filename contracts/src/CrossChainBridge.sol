@@ -237,12 +237,12 @@ contract CrossChainBridge is ReentrancyGuard, AccessControl, Pausable {
     ) external nonReentrant onlyRole(BRIDGE_OPERATOR_ROLE) {
         BridgeTransaction storage txn = bridgeTransactions[transactionId];
         
-        if (txn.status != BridgeStatus.Validated) {
-            revert InvalidStatus(txn.status, BridgeStatus.Validated);
-        }
-        
         if (processedTransactions[transactionId]) {
             revert TransactionAlreadyProcessed(transactionId);
+        }
+        
+        if (txn.status != BridgeStatus.Validated) {
+            revert InvalidStatus(txn.status, BridgeStatus.Validated);
         }
 
         // Calculate yield accrued during bridge time
