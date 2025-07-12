@@ -3,6 +3,7 @@ import { body, param, query, validationResult } from 'express-validator';
 import { PaymentService, CreatePaymentRequest, PaymentStatus } from '../services/PaymentService';
 import { logger, logApiMetrics } from '../utils/logger';
 import { chainConfigs, supportedTokens } from '../config/environment';
+import { ErrorTypes } from '../utils/errors';
 
 const router = Router();
 const paymentService = new PaymentService();
@@ -113,7 +114,12 @@ router.post('/', validatePaymentCreation, async (req: Request, res: Response) =>
             expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : undefined,
         };
 
-        const payment = await paymentService.createPayment(createRequest, req.user?.id);
+        const userId = req.user?.id;
+        if (!userId) {
+            throw ErrorTypes.UNAUTHORIZED('User ID is required');
+        }
+        
+        const payment = await paymentService.createPayment(createRequest, userId);
 
         logApiMetrics('/api/payments', 'POST', 201, Date.now() - startTime, req.user?.id);
 
@@ -138,7 +144,7 @@ router.post('/', validatePaymentCreation, async (req: Request, res: Response) =>
         logger.error('Error creating payment:', error);
         logApiMetrics('/api/payments', 'POST', 500, Date.now() - startTime, req.user?.id);
         
-        res.status(500).json({
+        return res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to create payment',
         });
@@ -235,13 +241,14 @@ router.post('/:paymentId/confirm', validatePaymentId, [
             },
         });
 
-    } catch (error) {
+    } catch (error: unknown) {
+        const err = error as Error;
         logger.error(`Error confirming payment ${req.params.paymentId}:`, error);
         logApiMetrics('/api/payments/:id/confirm', 'POST', 500, Date.now() - startTime, req.user?.id);
         
-        res.status(500).json({
+        return res.status(500).json({
             error: 'Internal Server Error',
-            message: error.message || 'Failed to confirm payment',
+            message: err.message || 'Failed to confirm payment',
         });
     }
 });
@@ -267,7 +274,7 @@ router.post('/:paymentId/release', validatePaymentId, async (req: Request, res: 
             });
         }
 
-        const payment = await paymentService.releasePayment(paymentId, merchantId);
+        const payment = await paymentService.releasePayment(paymentId);
 
         logApiMetrics('/api/payments/:id/release', 'POST', 200, Date.now() - startTime, req.user?.id);
 
@@ -283,13 +290,14 @@ router.post('/:paymentId/release', validatePaymentId, async (req: Request, res: 
             },
         });
 
-    } catch (error) {
+    } catch (error: unknown) {
+        const err = error as Error;
         logger.error(`Error releasing payment ${req.params.paymentId}:`, error);
         logApiMetrics('/api/payments/:id/release', 'POST', 500, Date.now() - startTime, req.user?.id);
         
-        res.status(500).json({
+        return res.status(500).json({
             error: 'Internal Server Error',
-            message: error.message || 'Failed to release payment',
+            message: err.message || 'Failed to release payment',
         });
     }
 });
@@ -389,7 +397,7 @@ router.get('/stats', async (req: Request, res: Response) => {
         logger.error('Error getting payment stats:', error);
         logApiMetrics('/api/payments/stats', 'GET', 500, Date.now() - startTime, req.user?.id);
         
-        res.status(500).json({
+        return res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to retrieve payment statistics',
         });

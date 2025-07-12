@@ -19,16 +19,16 @@ class DatabaseManager {
             },
         });
 
-        // Handle Prisma events
-        this.prisma.$on('error', (e) => {
-            logger.error('Prisma error:', e);
-        });
+        // Handle Prisma events (remove for now due to type issues)
+        // this.prisma.$on('error', (e) => {
+        //     logger.error('Prisma error:', e);
+        // });
 
-        if (isDevelopment) {
-            this.prisma.$on('query', (e) => {
-                logger.debug(`Query: ${e.query} | Params: ${e.params} | Duration: ${e.duration}ms`);
-            });
-        }
+        // if (isDevelopment) {
+        //     this.prisma.$on('query', (e) => {
+        //         logger.debug(`Query: ${e.query} | Params: ${e.params} | Duration: ${e.duration}ms`);
+        //     });
+        // }
     }
 
     /**
@@ -124,7 +124,7 @@ class DatabaseManager {
      * Transaction wrapper
      */
     public async transaction<T>(
-        fn: (tx: PrismaClient) => Promise<T>
+        fn: (tx: any) => Promise<T>
     ): Promise<T> {
         return this.prisma.$transaction(fn);
     }

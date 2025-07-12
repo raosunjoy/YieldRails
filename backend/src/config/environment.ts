@@ -10,18 +10,18 @@ dotenv.config();
 const envSchema = z.object({
     // Server configuration
     NODE_ENV: z.enum(['development', 'staging', 'production']).default('development'),
-    PORT: z.string().transform(Number).default(3000),
+    PORT: z.string().transform(Number).default('3000'),
     API_VERSION: z.string().default('1.0.0'),
     
     // CORS and security
     ALLOWED_ORIGINS: z.string().default('http://localhost:3000,http://localhost:3001'),
     JWT_SECRET: z.string().min(32),
     JWT_EXPIRES_IN: z.string().default('24h'),
-    RATE_LIMIT_MAX: z.string().transform(Number).default(100),
+    RATE_LIMIT_MAX: z.string().transform(Number).default('100'),
     
     // Database configuration
     DATABASE_URL: z.string().url(),
-    DATABASE_POOL_SIZE: z.string().transform(Number).default(10),
+    DATABASE_POOL_SIZE: z.string().transform(Number).default('10'),
     
     // Redis configuration
     REDIS_URL: z.string().url(),
@@ -67,10 +67,10 @@ const envSchema = z.object({
     SENTRY_DSN: z.string().url().optional(),
     
     // Feature flags
-    ENABLE_YIELD_OPTIMIZATION: z.string().transform(Boolean).default(true),
-    ENABLE_CROSS_CHAIN_BRIDGES: z.string().transform(Boolean).default(true),
-    ENABLE_COMPLIANCE_CHECKS: z.string().transform(Boolean).default(true),
-    ENABLE_REAL_TIME_NOTIFICATIONS: z.string().transform(Boolean).default(true),
+    ENABLE_YIELD_OPTIMIZATION: z.string().transform(Boolean).default('true'),
+    ENABLE_CROSS_CHAIN_BRIDGES: z.string().transform(Boolean).default('true'),
+    ENABLE_COMPLIANCE_CHECKS: z.string().transform(Boolean).default('true'),
+    ENABLE_REAL_TIME_NOTIFICATIONS: z.string().transform(Boolean).default('true'),
 });
 
 /**

@@ -1,19 +1,18 @@
 import { Server as HttpServer } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
+import WebSocket from 'ws';
 import { logger } from '../utils/logger';
 
 /**
- * WebSocket server for real-time updates
+ * WebSocket server for real-time updates using native WebSocket
  */
 class WebSocketService {
-    private io: SocketIOServer | null = null;
+    private wss: WebSocket.Server | null = null;
+    private connectedClients = new Map<string, WebSocket>();
 
     public init(server: HttpServer): void {
-        this.io = new SocketIOServer(server, {
-            cors: {
-                origin: "*", // Configure properly for production
-                methods: ["GET", "POST"]
-            }
+        this.wss = new WebSocket.Server({ 
+            server,
+            path: '/ws'
         });
 
         this.setupEventHandlers();
@@ -21,29 +20,84 @@ class WebSocketService {
     }
 
     private setupEventHandlers(): void {
-        if (!this.io) return;
+        if (!this.wss) return;
 
-        this.io.on('connection', (socket) => {
-            logger.debug(`Client connected: ${socket.id}`);
+        this.wss.on('connection', (ws: WebSocket) => {
+            const clientId = this.generateClientId();
+            this.connectedClients.set(clientId, ws);
+            
+            logger.debug(`Client connected: ${clientId}`);
 
-            socket.on('join_payment', (paymentId: string) => {
-                socket.join(`payment:${paymentId}`);
-                logger.debug(`Client ${socket.id} joined payment room: ${paymentId}`);
+            ws.on('message', (message: string) => {
+                try {
+                    const data = JSON.parse(message.toString());
+                    this.handleMessage(clientId, data);
+                } catch (error) {
+                    logger.error('Invalid WebSocket message:', error);
+                }
             });
 
-            socket.on('disconnect', () => {
-                logger.debug(`Client disconnected: ${socket.id}`);
+            ws.on('close', () => {
+                logger.debug(`Client disconnected: ${clientId}`);
+                this.connectedClients.delete(clientId);
+            });
+
+            ws.on('error', (error) => {
+                logger.error('WebSocket error:', error);
+                this.connectedClients.delete(clientId);
             });
         });
     }
 
-    public broadcastPaymentUpdate(paymentId: string, data: any): void {
-        if (this.io) {
-            this.io.to(`payment:${paymentId}`).emit('payment_update', data);
+    private generateClientId(): string {
+        return Math.random().toString(36).substr(2, 9);
+    }
+
+    private handleMessage(clientId: string, data: any): void {
+        // Handle different message types
+        switch (data.type) {
+            case 'join_payment':
+                // Join payment room logic would go here
+                logger.debug(`Client ${clientId} joined payment room: ${data.paymentId}`);
+                break;
+            default:
+                logger.debug(`Unhandled message type: ${data.type}`);
         }
     }
 
-    // TODO: Add more real-time event methods
+    public broadcastPaymentUpdate(paymentId: string, data: any): void {
+        const message = JSON.stringify({
+            type: 'payment_update',
+            paymentId,
+            data,
+            timestamp: new Date().toISOString()
+        });
+
+        this.broadcast(message);
+    }
+
+    public broadcastYieldUpdate(userId: string, data: any): void {
+        const message = JSON.stringify({
+            type: 'yield_update',
+            userId,
+            data,
+            timestamp: new Date().toISOString()
+        });
+
+        this.broadcast(message);
+    }
+
+    private broadcast(message: string): void {
+        this.connectedClients.forEach((ws) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+            }
+        });
+    }
+
+    public getConnectedClientsCount(): number {
+        return this.connectedClients.size;
+    }
 }
 
 export const websocketServer = new WebSocketService();

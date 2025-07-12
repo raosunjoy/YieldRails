@@ -12,14 +12,17 @@ class RedisManager {
     private isConnected: boolean = false;
 
     constructor() {
-        const redisConfig = {
+        const redisConfig: any = {
             url: config.REDIS_URL,
-            password: config.REDIS_PASSWORD,
             retryDelayOnFailover: 1000,
             maxRetriesPerRequest: 3,
             lazyConnect: true,
             enableOfflineQueue: false,
         };
+
+        if (config.REDIS_PASSWORD) {
+            redisConfig.password = config.REDIS_PASSWORD;
+        }
 
         // Main Redis client for general operations
         this.client = new Redis(redisConfig);

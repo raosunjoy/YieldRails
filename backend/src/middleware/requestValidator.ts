@@ -12,10 +12,10 @@ export const requestValidator = (req: Request, res: Response, next: NextFunction
     
     if (!errors.isEmpty()) {
         const formattedErrors = errors.array().map(error => ({
-            field: error.param,
+            field: 'param' in error ? error.param : 'unknown',
             message: error.msg,
-            value: error.value,
-            location: error.location,
+            value: 'value' in error ? error.value : undefined,
+            location: 'location' in error ? error.location : 'unknown',
         }));
 
         logger.warn('Request validation failed', {
@@ -27,7 +27,7 @@ export const requestValidator = (req: Request, res: Response, next: NextFunction
         });
 
         const error = ErrorTypes.VALIDATION_ERROR('Request validation failed');
-        error.details = formattedErrors;
+        (error as any).details = formattedErrors;
         
         throw error;
     }

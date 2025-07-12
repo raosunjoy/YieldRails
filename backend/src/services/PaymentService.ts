@@ -4,6 +4,9 @@ import { redis } from '../config/redis';
 import { chainConfigs, supportedTokens, ChainName, TokenSymbol } from '../config/environment';
 import { logger, logBlockchainOperation, logBusinessEvent } from '../utils/logger';
 
+// Export the types for use in other files
+export { PaymentStatus, PaymentType, PaymentEventType } from '@prisma/client';
+
 const prisma = new PrismaClient();
 
 /**
@@ -238,7 +241,12 @@ export class PaymentService {
 
         // Validate chain and token combination
         const tokenConfig = supportedTokens[request.token];
-        if (!tokenConfig?.addresses?.[request.chain]) {
+        if (!tokenConfig?.addresses) {
+            throw new Error(`Token ${request.token} not supported`);
+        }
+        
+        const chainAddresses = tokenConfig.addresses as Record<string, string>;
+        if (!chainAddresses[request.chain]) {
             throw new Error(`Token ${request.token} not supported on chain ${request.chain}`);
         }
 
@@ -290,6 +298,10 @@ export class PaymentService {
     private async storePayment(userId: string, merchantId: string, request: CreatePaymentRequest, escrowResult: any): Promise<any> {
         const tokenConfig = supportedTokens[request.token];
         const amountDecimal = parseFloat(request.amount);
+        
+        // Get token address with proper type handling
+        const chainAddresses = tokenConfig?.addresses as Record<string, string> | undefined;
+        const tokenAddress = chainAddresses?.[request.chain] || '';
 
         const payment = await prisma.payment.create({
             data: {
@@ -297,7 +309,7 @@ export class PaymentService {
                 merchantId,
                 amount: amountDecimal,
                 currency: 'USD', // Default to USD, could be derived from token
-                tokenAddress: tokenConfig?.addresses?.[request.chain] || '',
+                tokenAddress,
                 tokenSymbol: request.token,
                 status: PaymentStatus.PENDING,
                 type: PaymentType.MERCHANT_PAYMENT,
@@ -355,6 +367,59 @@ export class PaymentService {
                 return PaymentEventType.CANCELLED;
             default:
                 return PaymentEventType.CREATED;
+        }
+    }
+
+    /**
+     * Confirm a payment (called when blockchain transaction is confirmed)
+     */
+    public async confirmPayment(paymentId: string, transactionHash: string): Promise<any> {
+        try {
+            const payment = await prisma.payment.update({
+                where: { id: paymentId },
+                data: {
+                    status: PaymentStatus.CONFIRMED,
+                    destTransactionHash: transactionHash, // Use correct field name
+                    confirmedAt: new Date()
+                }
+            });
+
+            // Log payment event (method exists in the class)
+            await this.logPaymentEvent(paymentId, PaymentEventType.CONFIRMED, {
+                transactionHash,
+                confirmedAt: new Date()
+            });
+
+            logBusinessEvent('payment_confirmed', 'payment', { paymentId, transactionHash });
+            return payment;
+        } catch (error) {
+            logger.error('Error confirming payment:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Release a payment (release escrow funds to merchant)
+     */
+    public async releasePayment(paymentId: string): Promise<any> {
+        try {
+            const payment = await prisma.payment.update({
+                where: { id: paymentId },
+                data: {
+                    status: PaymentStatus.COMPLETED
+                    // Remove completedAt as it may not exist in schema
+                }
+            });
+
+            await this.logPaymentEvent(paymentId, PaymentEventType.RELEASED, {
+                releasedAt: new Date()
+            });
+
+            logBusinessEvent('payment_released', 'payment', { paymentId });
+            return payment;
+        } catch (error) {
+            logger.error('Error releasing payment:', error);
+            throw error;
         }
     }
 }

@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger';
-import { Payment } from './PaymentService';
+import { Payment } from '@prisma/client';
 
 /**
  * Notification service for emails, webhooks, and real-time updates

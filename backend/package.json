@@ -19,7 +19,7 @@
     "db:migrate": "npx prisma migrate dev",
     "db:generate": "npx prisma generate",
     "db:studio": "npx prisma studio",
-    "db:seed": "tsx scripts/seed.ts",
+    "db:seed": "tsx prisma/seed.ts",
     "security": "npm audit --audit-level=moderate && snyk test",
     "docker:build": "docker build -t yieldrails/backend .",
     "docker:run": "docker run -p 3000:3000 yieldrails/backend"

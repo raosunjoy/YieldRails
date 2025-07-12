@@ -60,8 +60,9 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
 
         next();
 
-    } catch (error) {
-        if (error.name === 'TokenExpiredError') {
+    } catch (error: unknown) {
+        const err = error as Error;
+        if (err.name === 'TokenExpiredError') {
             logSecurityEvent('token_expired', 'low', {
                 ip: req.ip,
                 userAgent: req.get('User-Agent'),
@@ -69,7 +70,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
             throw ErrorTypes.UNAUTHORIZED('Authentication token has expired');
         }
 
-        if (error.name === 'JsonWebTokenError') {
+        if (err.name === 'JsonWebTokenError') {
             logSecurityEvent('invalid_token', 'medium', {
                 ip: req.ip,
                 userAgent: req.get('User-Agent'),
@@ -136,21 +137,21 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
  * Generate JWT token
  */
 export const generateToken = (user: AuthenticatedUser): string => {
-    return jwt.sign(
-        {
-            sub: user.id,
-            address: user.address,
-            role: user.role,
-            email: user.email,
-            isVerified: user.isVerified,
-        },
-        config.JWT_SECRET,
-        {
-            expiresIn: config.JWT_EXPIRES_IN,
-            issuer: 'yieldrails-api',
-            audience: 'yieldrails-client',
-        }
-    );
+    const payload = {
+        sub: user.id,
+        address: user.address,
+        role: user.role,
+        email: user.email,
+        isVerified: user.isVerified,
+    };
+    
+    const options: jwt.SignOptions = {
+        expiresIn: config.JWT_EXPIRES_IN,
+        issuer: 'yieldrails-api',
+        audience: 'yieldrails-client',
+    };
+    
+    return jwt.sign(payload, config.JWT_SECRET, options);
 };
 
 /**
