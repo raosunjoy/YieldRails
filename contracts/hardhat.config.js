@@ -21,10 +21,6 @@ module.exports = {
   networks: {
     hardhat: {
       chainId: 31337,
-      forking: process.env.MAINNET_RPC_URL ? {
-        url: process.env.MAINNET_RPC_URL,
-        blockNumber: 18500000
-      } : undefined,
       accounts: {
         count: 20,
         accountsBalance: "10000000000000000000000" // 10,000 ETH

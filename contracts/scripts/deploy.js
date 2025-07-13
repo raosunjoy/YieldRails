@@ -12,24 +12,24 @@ const DEPLOYMENT_CONFIG = {
     sepolia: {
         chainId: 11155111,
         usdc: "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8", // USDC on Sepolia
-        admin: "0x742d35Cc6634C0532925a3b8D0A79D1Ebbf3b7d0", // Replace with actual admin
-        feeRecipient: "0x742d35Cc6634C0532925a3b8D0A79D1Ebbf3b7d0",
+        admin: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", // Checksummed test address
+        feeRecipient: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         supportedChains: [1, 137, 42161, 8453], // Ethereum, Polygon, Arbitrum, Base
         bridgeFee: 10 // 0.1% in basis points
     },
     mumbai: {
         chainId: 80001,
         usdc: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", // USDC on Mumbai
-        admin: "0x742d35Cc6634C0532925a3b8D0A79D1Ebbf3b7d0",
-        feeRecipient: "0x742d35Cc6634C0532925a3b8D0A79D1Ebbf3b7d0",
+        admin: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        feeRecipient: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         supportedChains: [11155111, 1, 42161, 8453], // Sepolia, Ethereum, Arbitrum, Base
         bridgeFee: 10
     },
     arbitrumSepolia: {
         chainId: 421614,
         usdc: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d", // USDC on Arbitrum Sepolia
-        admin: "0x742d35Cc6634C0532925a3b8D0A79D1Ebbf3b7d0",
-        feeRecipient: "0x742d35Cc6634C0532925a3b8D0A79D1Ebbf3b7d0",
+        admin: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        feeRecipient: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         supportedChains: [11155111, 80001, 1, 137], // Sepolia, Mumbai, Ethereum, Polygon
         bridgeFee: 10
     }
