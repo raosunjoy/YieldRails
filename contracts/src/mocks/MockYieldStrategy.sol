@@ -13,6 +13,7 @@ contract MockYieldStrategy is IYieldStrategy {
     using SafeERC20 for IERC20;
 
     address public immutable override asset;
+    string private _name;
     uint256 private _totalAssets;
     uint256 private _totalShares;
     uint256 private _userYield;
@@ -23,6 +24,7 @@ contract MockYieldStrategy is IYieldStrategy {
 
     constructor(address _asset) {
         asset = _asset;
+        _name = "Mock Strategy";
     }
 
     // Test helper functions
@@ -36,6 +38,30 @@ contract MockYieldStrategy is IYieldStrategy {
 
     function setCurrentAPY(uint256 apy) external {
         _currentAPY = apy;
+    }
+
+    function setName(string memory strategyName) external {
+        _name = strategyName;
+    }
+
+    // Additional methods for testing compatibility
+    function name() external view returns (string memory) {
+        return _name;
+    }
+
+    function currentAPY() external view returns (uint256) {
+        return _currentAPY;
+    }
+
+    function totalDeposited() external view returns (uint256) {
+        return _totalAssets;
+    }
+
+    function calculateYield(uint256 principal, uint256 timeInSeconds) external view returns (uint256) {
+        // Simple yield calculation: (principal * APY * time) / (10000 * seconds_in_year)
+        uint256 annualYield = (principal * _currentAPY) / 10000;
+        uint256 secondsInYear = 365 * 24 * 60 * 60;
+        return (annualYield * timeInSeconds) / secondsInYear;
     }
 
     // IYieldStrategy implementation

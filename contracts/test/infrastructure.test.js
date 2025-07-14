@@ -263,19 +263,25 @@ describe("YieldRails Smart Contract Testing Infrastructure", function () {
     });
 
     it("Should deploy and interact with MockYieldStrategy", async function () {
-      const { nobleStrategy } = await deployMockStrategies();
+      const { nobleStrategy, baseToken } = await deployMockStrategies();
       const amount = ethers.parseUnits("1000", 18);
       
+      // First mint tokens to the test account
+      await baseToken.mint(accounts.user1.address, amount);
+      
+      // Approve the strategy to spend tokens
+      await baseToken.connect(accounts.user1).approve(nobleStrategy.target || nobleStrategy.address, amount);
+      
       // Test deposit
-      await nobleStrategy.deposit(amount, { value: amount });
+      await nobleStrategy.connect(accounts.user1).deposit(amount);
       expect(await nobleStrategy.totalDeposited()).to.equal(amount);
       
       // Test APY
       expect(await nobleStrategy.currentAPY()).to.equal(450); // 4.5%
       
       // Test yield calculation
-      const yield = await nobleStrategy.calculateYield(amount, 365 * 24 * 3600); // 1 year
-      expect(yield).to.be.greaterThan(0);
+      const yieldAmount = await nobleStrategy.calculateYield(amount, 365 * 24 * 3600); // 1 year
+      expect(yieldAmount).to.be.greaterThan(0);
     });
   });
 });

@@ -1,480 +1,326 @@
 # YieldRails Testing Infrastructure
 
-This document describes the comprehensive testing infrastructure implemented for the YieldRails platform, ensuring 100% smart contract coverage and 95% backend coverage with automated quality gates.
+This document describes the comprehensive testing infrastructure implemented for the YieldRails project.
 
 ## Overview
 
-The YieldRails testing infrastructure is designed to support:
-- **Smart Contracts**: 100% test coverage requirement with gas optimization validation
-- **Backend Services**: 95% test coverage with integration and E2E testing
-- **Frontend Applications**: Component testing with React Testing Library
-- **SDK**: Comprehensive API testing with mock integrations
-- **CI/CD Pipeline**: Automated testing and quality gate validation
+The YieldRails testing infrastructure is designed to ensure 100% reliability and security through comprehensive test coverage across all components:
 
-## Project Structure
+- **Smart Contracts**: 100% test coverage requirement
+- **Backend Services**: 95% test coverage requirement  
+- **Frontend Components**: 90% test coverage requirement
+- **SDK**: 100% test coverage requirement
 
-```
-yieldrails/
-├── contracts/                 # Smart contract testing
-│   ├── test/
-│   │   ├── helpers/           # Contract test utilities
-│   │   ├── unit/              # Unit tests
-│   │   ├── integration/       # Integration tests
-│   │   └── infrastructure.test.js
-│   ├── hardhat.config.js      # Hardhat configuration
-│   └── coverage/              # Coverage reports
-├── backend/                   # Backend API testing
-│   ├── test/
-│   │   ├── helpers/           # Test utilities
-│   │   ├── setup/             # Test environment setup
-│   │   ├── unit/              # Unit tests
-│   │   ├── integration/       # Integration tests
-│   │   └── e2e/               # End-to-end tests
-│   ├── jest.config.js         # Jest configuration
-│   └── coverage/              # Coverage reports
-├── frontend/                  # Frontend testing
-│   ├── test/
-│   └── jest.config.js
-├── sdk/                       # SDK testing
-│   ├── test/
-│   └── jest.config.js
-├── scripts/
-│   └── validate-quality-gates.js
-└── .github/workflows/
-    └── ci.yml                 # CI/CD pipeline
-```
+## Testing Architecture
 
-## Smart Contract Testing
+### 1. Test Types
 
-### Configuration
+#### Unit Tests
+- **Purpose**: Test individual functions and components in isolation
+- **Location**: `*/test/unit/` or `*/__tests__/`
+- **Coverage**: High coverage requirements per workspace
+- **Execution**: Fast, no external dependencies
 
-The smart contract testing uses Hardhat with the following key configurations:
+#### Integration Tests
+- **Purpose**: Test component interactions and API endpoints
+- **Location**: `*/test/integration/`
+- **Dependencies**: Database, Redis, external services (mocked)
+- **Execution**: Medium speed, isolated test environment
 
-```javascript
-// hardhat.config.js
-module.exports = {
-  solidity: {
-    version: "0.8.20",
-    settings: {
-      optimizer: { enabled: true, runs: 200 },
-      viaIR: true
-    }
-  },
-  gasReporter: {
-    enabled: true,
-    outputFile: "./gas-report.txt",
-    maxMethodDiff: 10
-  },
-  solidity_coverage: {
-    skipFiles: ['test/', 'mocks/', 'interfaces/']
-  }
-};
-```
+#### End-to-End Tests
+- **Purpose**: Test complete user workflows
+- **Location**: `*/test/e2e/`
+- **Dependencies**: Full application stack
+- **Execution**: Slower, realistic environment
 
-### Test Helpers
+### 2. Workspace-Specific Testing
 
-The contract test helpers provide utilities for:
-- Account setup and management
-- Mock token and strategy deployment
-- Gas usage measurement and validation
-- Event detection and validation
-- Time manipulation for testing
-- Snapshot creation and restoration
-
-```javascript
-const { contractTestHelper, expectGasUsage, expectEvent } = require("./helpers");
-
-// Example usage
-const accounts = await contractTestHelper.setupAccounts();
-const { usdc } = await contractTestHelper.deployMockTokens();
-await expectGasUsage(tx, 100000); // Enforce 100k gas limit
-```
-
-### Coverage Requirements
-
-- **100% line coverage** - Every line of code must be executed
-- **100% function coverage** - Every function must be called
-- **100% branch coverage** - Every conditional branch must be tested
-- **100% statement coverage** - Every statement must be executed
-
-### Gas Optimization
-
-- Maximum 100k gas per transaction
-- Gas reporting enabled for all tests
-- Automatic validation in CI/CD pipeline
-
-## Backend Testing
-
-### Configuration
-
-Backend testing uses Jest with TypeScript support:
-
-```javascript
-// jest.config.js
-module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
-  coverageThreshold: {
-    global: {
-      branches: 95,
-      functions: 95,
-      lines: 95,
-      statements: 95
-    }
-  }
-};
-```
-
-### Test Types
-
-1. **Unit Tests** (`test/unit/`)
-   - Individual function testing
-   - Service method validation
-   - Business logic verification
-
-2. **Integration Tests** (`test/integration/`)
-   - Database interactions
-   - External service integrations
-   - API endpoint testing
-
-3. **End-to-End Tests** (`test/e2e/`)
-   - Complete user workflows
-   - Cross-service interactions
-   - Real-world scenarios
-
-### Test Utilities
-
-The `testUtils` class provides comprehensive testing utilities:
-
-```typescript
-import { testUtils } from './helpers/testUtils';
-
-// Database management
-await testUtils.cleanup();
-await testUtils.cleanDatabase();
-await testUtils.cleanRedis();
-
-// Test data creation
-const user = testUtils.createTestUser({ role: 'MERCHANT' });
-const payment = testUtils.createTestPayment({ amount: '100.00' });
-const merchant = testUtils.createTestMerchant({ isActive: true });
-
-// JWT and authentication
-const token = testUtils.generateTestJWT('user-id', 'USER');
-const headers = testUtils.createAuthHeaders(token);
-
-// Blockchain utilities
-const txHash = testUtils.generateMockTransactionHash();
-const address = testUtils.generateMockWalletAddress();
-```
-
-### Database Testing
-
-- PostgreSQL test databases for isolation
-- Redis test instances for caching tests
-- Automatic cleanup between tests
-- Migration management for test environments
-
-## CI/CD Pipeline
-
-### Quality Gates
-
-The CI/CD pipeline enforces strict quality gates:
-
-1. **Linting and Formatting**
-   - ESLint for code quality
-   - Prettier for code formatting
-   - Solhint for Solidity contracts
-
-2. **Unit Tests**
-   - All workspaces tested in parallel
-   - Coverage reports generated
-   - Failure stops pipeline
-
-3. **Integration Tests**
-   - Database and Redis services
-   - External service mocking
-   - Real integration validation
-
-4. **Smart Contract Tests**
-   - 100% coverage enforcement
-   - Gas optimization validation
-   - Security analysis
-
-5. **End-to-End Tests**
-   - Complete user workflows
-   - Cross-service validation
-   - Performance testing
-
-6. **Security Audits**
-   - npm audit for dependencies
-   - Contract security analysis
-   - Vulnerability scanning
-
-### Pipeline Stages
-
-```yaml
-# .github/workflows/ci.yml
-jobs:
-  lint:           # Code quality checks
-  test-unit:      # Unit tests for all workspaces
-  test-integration: # Integration tests with services
-  test-contracts: # Smart contract tests with 100% coverage
-  test-e2e:       # End-to-end testing
-  security:       # Security audits
-  quality-gates:  # Quality gate validation
-  build:          # Docker image building
-  deploy-staging: # Staging deployment
-  deploy-production: # Production deployment
-```
-
-## Quality Gate Validation
-
-The `validate-quality-gates.js` script enforces all requirements:
-
-```bash
-npm run quality:gates
-```
-
-This validates:
-- Smart contract 100% coverage
-- Backend 95% coverage
-- Gas usage limits (<100k per transaction)
-- Contract size limits
-- Security audit results
-
-## Running Tests
-
-### Smart Contracts
-
+#### Smart Contracts (`contracts/`)
 ```bash
 # Run all contract tests
 npm run test --workspace=contracts
 
-# Run with coverage
+# Run with coverage (100% required)
 npm run test:coverage --workspace=contracts
 
 # Run with gas reporting
 npm run test:gas --workspace=contracts
 
-# Run specific test file
-npx hardhat test test/infrastructure.test.js
+# Run specific test categories
+npm run test:unit --workspace=contracts
+npm run test:integration --workspace=contracts
 ```
 
-### Backend
+**Configuration**: `contracts/hardhat.config.js`
+- Hardhat testing framework
+- Mocha test runner
+- Chai assertions
+- Gas reporting enabled
+- Coverage tracking with 100% requirement
 
+**Test Structure**:
+```
+contracts/test/
+├── unit/           # Unit tests for individual contracts
+├── integration/    # Integration tests between contracts
+├── helpers/        # Test utilities and fixtures
+└── *.test.js       # Main test files
+```
+
+#### Backend API (`backend/`)
 ```bash
 # Run all backend tests
 npm run test --workspace=backend
 
-# Run unit tests only
+# Run specific test types
 npm run test:unit --workspace=backend
-
-# Run integration tests
 npm run test:integration --workspace=backend
-
-# Run E2E tests
 npm run test:e2e --workspace=backend
 
-# Run with coverage
+# Run with coverage (95% required)
 npm run test:coverage --workspace=backend
-
-# Watch mode
-npm run test:watch --workspace=backend
 ```
 
-### All Workspaces
+**Configuration**: Multiple Jest configs
+- `jest.config.js` - Unit tests
+- `jest.integration.config.js` - Integration tests
+- `jest.e2e.config.js` - End-to-end tests
+
+**Test Structure**:
+```
+backend/test/
+├── unit/           # Unit tests for services/utilities
+├── integration/    # API integration tests
+├── e2e/           # End-to-end workflow tests
+├── helpers/       # Test utilities and mocks
+└── setup/         # Test environment setup
+```
+
+#### Frontend (`frontend/`)
+```bash
+# Run frontend tests
+npm run test --workspace=frontend
+
+# Run with coverage (90% required)
+npm run test:coverage --workspace=frontend
+
+# Run E2E tests with Playwright
+npm run test:e2e --workspace=frontend
+```
+
+**Configuration**: `jest.config.js` with Next.js integration
+- React Testing Library
+- Jest DOM matchers
+- Component testing focus
+- Playwright for E2E tests
+
+#### SDK (`sdk/`)
+```bash
+# Run SDK tests
+npm run test --workspace=sdk
+
+# Run with coverage (100% required)
+npm run test:coverage --workspace=sdk
+```
+
+**Configuration**: `jest.config.js`
+- TypeScript support
+- Node.js environment
+- Mock external dependencies
+- 100% coverage requirement
+
+### 3. Test Utilities and Helpers
+
+#### Backend Test Utilities (`backend/test/helpers/testUtils.ts`)
+- Mock Express request/response objects
+- Database test utilities
+- Blockchain mocking utilities
+- API testing helpers
+- Time manipulation utilities
+- Error testing utilities
+
+#### Contract Test Helpers (`contracts/test/helpers/index.js`)
+- Contract deployment utilities
+- Time manipulation (EVM)
+- Gas measurement tools
+- Event testing utilities
+- Balance tracking
+- Yield calculation helpers
+
+### 4. Quality Gates
+
+#### Coverage Requirements
+- **Contracts**: 100% (statements, branches, functions, lines)
+- **Backend**: 95% (statements, branches, functions, lines)
+- **Frontend**: 90% (statements, branches, functions, lines)
+- **SDK**: 100% (statements, branches, functions, lines)
+
+#### Performance Requirements
+- **Gas Usage**: <100k gas per contract transaction
+- **API Response Time**: <200ms (95th percentile)
+- **Bundle Size**: Frontend <500KB, SDK <50KB
+
+#### Security Requirements
+- All inputs validated and sanitized
+- Comprehensive error handling
+- Security audit integration
+- Dependency vulnerability scanning
+
+### 5. Continuous Integration
+
+#### GitHub Actions Pipeline (`.github/workflows/ci.yml`)
+
+**Stages**:
+1. **Lint & Format**: Code quality checks
+2. **Unit Tests**: Parallel execution across workspaces
+3. **Integration Tests**: Database and service integration
+4. **Contract Tests**: Smart contract testing with coverage
+5. **E2E Tests**: Full application workflow testing
+6. **Security Audit**: Vulnerability scanning
+7. **Build & Deploy**: Docker image creation and deployment
+
+**Quality Gates Validation**:
+- Coverage thresholds enforced
+- Gas usage limits checked
+- Bundle size limits verified
+- Security audit results reviewed
+
+### 6. Local Development
+
+#### Running Tests Locally
 
 ```bash
-# Run all tests
-npm run test
+# Install all dependencies
+npm run install:all
 
-# Run with coverage
+# Run all tests across workspaces
+npm test
+
+# Run specific test types
+npm run test:unit
+npm run test:integration
+npm run test:e2e
+
+# Run tests with coverage
 npm run test:coverage
 
-# Validate quality gates
+# Run quality gates validation
 npm run quality:gates
 ```
 
-## Test Environment Setup
+#### Test Environment Setup
 
-### Prerequisites
-
+**Prerequisites**:
 - Node.js 18+
-- PostgreSQL 15+
-- Redis 7+
-- Docker (for CI/CD)
+- PostgreSQL (for integration tests)
+- Redis (for integration tests)
+- Docker (optional, for containerized testing)
 
-### Local Development
-
-1. **Install Dependencies**
-   ```bash
-   npm ci
-   ```
-
-2. **Setup Test Databases**
-   ```bash
-   # PostgreSQL
-   createdb yieldrails_test
-   createdb yieldrails_integration_test
-   createdb yieldrails_e2e_test
-   
-   # Redis - uses different DB numbers (1, 2, 3)
-   ```
-
-3. **Environment Variables**
-   ```bash
-   # .env.test
-   DATABASE_URL=postgresql://test:test@localhost:5432/yieldrails_test
-   REDIS_URL=redis://localhost:6379/1
-   JWT_SECRET=test-jwt-secret
-   LOG_LEVEL=error
-   ```
-
-4. **Run Tests**
-   ```bash
-   npm run test
-   ```
-
-## Coverage Reports
-
-### Smart Contracts
-
-Coverage reports are generated in `contracts/coverage/`:
-- `index.html` - Interactive HTML report
-- `lcov.info` - LCOV format for CI/CD
-- `coverage-summary.json` - JSON summary
-
-### Backend
-
-Coverage reports are generated in `backend/coverage/`:
-- `index.html` - Interactive HTML report
-- `lcov.info` - LCOV format for CI/CD
-- `coverage-summary.json` - JSON summary
-
-## Best Practices
-
-### Test Organization
-
-1. **Descriptive Test Names**
-   ```javascript
-   describe('PaymentService', () => {
-     describe('createPayment', () => {
-       it('should create payment with valid data', async () => {
-         // Test implementation
-       });
-       
-       it('should reject payment with invalid amount', async () => {
-         // Test implementation
-       });
-     });
-   });
-   ```
-
-2. **Test Isolation**
-   ```javascript
-   beforeEach(async () => {
-     await testUtils.cleanup();
-   });
-   ```
-
-3. **Comprehensive Assertions**
-   ```javascript
-   expect(payment).toHaveProperty('id');
-   expect(payment.amount).toBe('100.00');
-   expect(payment.status).toBe('PENDING');
-   expect(testUtils.isValidEthereumAddress(payment.senderAddress)).toBe(true);
-   ```
-
-### Mock Management
-
-1. **External Services**
-   ```javascript
-   jest.mock('ethers', () => ({
-     JsonRpcProvider: jest.fn().mockImplementation(() => ({
-       getBalance: jest.fn().mockResolvedValue('1000000000000000000')
-     }))
-   }));
-   ```
-
-2. **Database Interactions**
-   ```javascript
-   const mockUser = testUtils.createTestUser();
-   await testUtils.createUserInDb(mockUser);
-   ```
-
-### Performance Testing
-
-1. **Gas Usage Validation**
-   ```javascript
-   await expectGasUsage(tx, 100000);
-   ```
-
-2. **Response Time Testing**
-   ```javascript
-   const start = Date.now();
-   await apiCall();
-   const duration = Date.now() - start;
-   expect(duration).toBeLessThan(200); // 200ms limit
-   ```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Database Connection Errors**
-   - Ensure PostgreSQL is running
-   - Check connection strings
-   - Verify test databases exist
-
-2. **Redis Connection Errors**
-   - Ensure Redis is running
-   - Check Redis URL configuration
-   - Verify different DB numbers for test isolation
-
-3. **Coverage Failures**
-   - Check excluded files in configuration
-   - Ensure all code paths are tested
-   - Review coverage reports for missing areas
-
-4. **Gas Limit Exceeded**
-   - Optimize contract code
-   - Review gas usage reports
-   - Consider contract size limits
-
-### Debug Commands
-
+**Environment Variables**:
 ```bash
-# Debug test failures
-npm run test -- --verbose
+# Test database
+DATABASE_URL=postgresql://test:test@localhost:5432/yieldrails_test
 
-# Debug coverage issues
-npm run test:coverage -- --verbose
+# Test Redis
+REDIS_URL=redis://localhost:6379/1
 
-# Debug gas usage
-REPORT_GAS=true npm run test --workspace=contracts
+# Test JWT secret
+JWT_SECRET=test-jwt-secret-key
 
-# Debug database issues
-DATABASE_URL=postgresql://... npm run test:integration --workspace=backend
+# Log level for tests
+LOG_LEVEL=error
 ```
 
-## Continuous Improvement
+### 7. Test Data Management
 
-The testing infrastructure is continuously improved through:
+#### Database Testing
+- Separate test databases for each test type
+- Automatic cleanup between tests
+- Seeding utilities for consistent test data
+- Transaction rollback for test isolation
 
-1. **Regular Updates**
-   - Dependency updates
-   - Security patches
-   - Performance optimizations
+#### Blockchain Testing
+- Hardhat local network for contract tests
+- Snapshot/restore for test isolation
+- Mock contracts for integration testing
+- Gas usage tracking and optimization
 
-2. **Metrics Tracking**
-   - Coverage trends
-   - Test execution time
-   - Failure rates
+### 8. Debugging and Troubleshooting
 
-3. **Tool Evaluation**
-   - New testing frameworks
-   - Better assertion libraries
-   - Enhanced reporting tools
+#### Common Issues
 
-This comprehensive testing infrastructure ensures the YieldRails platform maintains the highest quality standards while enabling rapid, confident development and deployment.
+**Coverage Not Meeting Requirements**:
+```bash
+# Check detailed coverage report
+npm run test:coverage --workspace=<workspace>
+open <workspace>/coverage/index.html
+```
+
+**Integration Tests Failing**:
+```bash
+# Check database connection
+npm run db:migrate --workspace=backend
+
+# Verify Redis connection
+redis-cli ping
+```
+
+**Contract Tests Gas Issues**:
+```bash
+# Run with gas reporting
+REPORT_GAS=true npm run test --workspace=contracts
+
+# Check gas report
+cat contracts/gas-report.txt
+```
+
+#### Test Debugging
+- Use `--verbose` flag for detailed output
+- Set `LOG_LEVEL=debug` for detailed logging
+- Use `--watch` mode for development
+- Leverage IDE debugging with Jest/Mocha
+
+### 9. Best Practices
+
+#### Writing Tests
+1. **Arrange-Act-Assert** pattern
+2. **Descriptive test names** explaining the scenario
+3. **Test edge cases** and error conditions
+4. **Mock external dependencies** appropriately
+5. **Use test utilities** for common operations
+
+#### Test Organization
+1. **Group related tests** in describe blocks
+2. **Use beforeEach/afterEach** for setup/cleanup
+3. **Keep tests independent** and isolated
+4. **Follow naming conventions** consistently
+
+#### Performance
+1. **Parallel test execution** where possible
+2. **Efficient test data setup**
+3. **Proper cleanup** to prevent memory leaks
+4. **Optimize slow tests** or mark as integration/E2E
+
+### 10. Monitoring and Reporting
+
+#### Coverage Reporting
+- HTML reports for detailed analysis
+- LCOV format for CI integration
+- Codecov integration for PR reviews
+- Coverage trends tracking
+
+#### Performance Monitoring
+- Gas usage tracking for contracts
+- Response time monitoring for APIs
+- Bundle size monitoring for frontend
+- Memory usage tracking for long-running tests
+
+#### Quality Metrics
+- Test execution time trends
+- Flaky test identification
+- Coverage trend analysis
+- Security vulnerability tracking
+
+## Conclusion
+
+This comprehensive testing infrastructure ensures the reliability, security, and performance of the YieldRails platform. The multi-layered approach with strict quality gates provides confidence in the system's robustness while maintaining development velocity through automated testing and continuous integration.
