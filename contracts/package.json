@@ -6,8 +6,11 @@
   "scripts": {
     "build": "hardhat compile",
     "test": "hardhat test",
+    "test:unit": "hardhat test test/unit/",
+    "test:integration": "hardhat test test/integration/",
     "test:coverage": "hardhat coverage",
     "test:gas": "REPORT_GAS=true hardhat test",
+    "test:watch": "hardhat test --watch",
     "lint": "solhint 'src/**/*.sol' && eslint 'test/**/*.{js,ts}'",
     "lint:fix": "solhint 'src/**/*.sol' --fix && eslint 'test/**/*.{js,ts}' --fix",
     "clean": "hardhat clean && rm -rf coverage coverage.json",

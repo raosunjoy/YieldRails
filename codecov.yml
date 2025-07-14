@@ -1,0 +1,64 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 95%
+        threshold: 1%
+        if_not_found: success
+    patch:
+      default:
+        target: 95%
+        threshold: 1%
+        if_not_found: success
+  
+  # Smart contracts require 100% coverage
+  precision: 2
+  round: down
+  range: "70...100"
+  
+  ignore:
+    - "node_modules"
+    - "coverage"
+    - "dist"
+    - "build"
+    - "artifacts"
+    - "cache"
+    - "**/*.d.ts"
+    - "**/*.config.js"
+    - "**/*.config.ts"
+    - "**/test/**"
+    - "**/__tests__/**"
+    - "**/*.test.ts"
+    - "**/*.test.js"
+    - "**/*.spec.ts"
+    - "**/*.spec.js"
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+
+flags:
+  contracts:
+    paths:
+      - contracts/src/
+    target: 100%
+    threshold: 0%
+    
+  backend:
+    paths:
+      - backend/src/
+    target: 95%
+    threshold: 1%
+    
+  frontend:
+    paths:
+      - frontend/src/
+    target: 90%
+    threshold: 1%
+    
+  sdk:
+    paths:
+      - sdk/src/
+    target: 100%
+    threshold: 0%

@@ -15,7 +15,11 @@
     "install:workspaces": "npm install --workspaces",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
+    "test:unit": "npm run test:unit --workspaces",
+    "test:integration": "npm run test:integration --workspaces",
+    "test:e2e": "npm run test:e2e --workspaces",
     "test:coverage": "npm run test:coverage --workspaces",
+    "test:watch": "npm run test:watch --workspaces",
     "lint": "npm run lint --workspaces",
     "lint:fix": "npm run lint:fix --workspaces",
     "clean": "npm run clean --workspaces && rm -rf node_modules",
@@ -28,6 +32,8 @@
     "deploy:mainnet": "npm run deploy:mainnet --workspace=contracts",
     "security:audit": "npm audit --audit-level=moderate && npm run security:contracts",
     "security:contracts": "npm run security --workspace=contracts",
+    "quality:gates": "node scripts/validate-quality-gates.js",
+    "quality:check": "npm run test:coverage && npm run quality:gates",
     "prepare": "echo 'Skipping husky install for now'"
   },
   "repository": {

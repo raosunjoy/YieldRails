@@ -9,10 +9,12 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test": "jest",
+    "test:unit": "jest --config jest.config.js",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test:coverage": "jest --coverage --config jest.config.js",
     "test:integration": "jest --config jest.integration.config.js",
     "test:e2e": "jest --config jest.e2e.config.js",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
     "lint": "eslint src test --ext .ts",
     "lint:fix": "eslint src test --ext .ts --fix",
     "clean": "rm -rf dist coverage",
@@ -83,25 +85,7 @@
     "tsx": "^3.12.7",
     "typescript": "^5.1.6"
   },
-  "jest": {
-    "preset": "ts-jest",
-    "testEnvironment": "node",
-    "roots": ["<rootDir>/src", "<rootDir>/test"],
-    "testMatch": ["**/__tests__/**/*.ts", "**/*.test.ts"],
-    "collectCoverageFrom": [
-      "src/**/*.ts",
-      "!src/**/*.d.ts",
-      "!src/index.ts"
-    ],
-    "coverageThreshold": {
-      "global": {
-        "branches": 95,
-        "functions": 95,
-        "lines": 95,
-        "statements": 95
-      }
-    }
-  },
+
   "engines": {
     "node": ">=18.0.0"
   }

@@ -177,7 +177,19 @@ module.exports = {
   mocha: {
     timeout: 60000, // 60 seconds
     reporter: "spec",
-    slow: 5000
+    slow: 5000,
+    bail: false,
+    recursive: true
+  },
+  // Solidity coverage configuration for 100% requirement
+  solidity_coverage: {
+    skipFiles: ['test/', 'mocks/', 'interfaces/'],
+    measureStatementCoverage: true,
+    measureFunctionCoverage: true,
+    measureBranchCoverage: true,
+    measureLineCoverage: true,
+    istanbulReporter: ['html', 'lcov', 'text', 'json'],
+    istanbulFolder: './coverage'
   },
   typechain: {
     outDir: "typechain-types",
