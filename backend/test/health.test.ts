@@ -1,6 +1,6 @@
 import request from 'supertest';
 import express from 'express';
-import { testUtils, createMockRequest, createMockResponse } from './helpers/testUtils';
+import { ApiTestUtils, createMockRequest, createMockResponse } from './helpers/testUtils';
 
 // Mock health router since it may not exist yet
 const mockHealthRouter = express.Router();
@@ -23,6 +23,8 @@ mockHealthRouter.get('/live', (req, res) => {
 
 const app = express();
 app.use('/api/health', mockHealthRouter);
+
+const testUtils = new ApiTestUtils();
 
 describe('YieldRails Testing Infrastructure', () => {
   beforeAll(async () => {

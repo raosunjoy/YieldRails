@@ -39,6 +39,18 @@ export interface LiquidityCheck {
     estimatedWaitTime: number;
 }
 
+export interface BridgeRequest {
+    recipient?: string;
+    amount: number;
+    token: string;
+    sourceChain: string;
+    destinationChain: string;
+    sourceAddress?: string;
+    destinationAddress?: string;
+    paymentId?: string;
+    metadata?: any;
+}
+
 export interface BridgeEstimate {
     fee: number;
     estimatedTime: number;
@@ -289,6 +301,30 @@ export class CrossChainService {
             timeRange, totalTransactions, successfulTransactions, failedTransactions, pendingTransactions,
             successRate, totalVolume, totalFees, validatorMetrics: {}, liquidityMetrics: {}
         };
+    }
+
+    /**
+     * Initiate a cross-chain bridge transaction (alias for backward compatibility)
+     */
+    public async initiateBridge(request: BridgeRequest): Promise<CrossChainTransaction> {
+        return await this.initiateBridgeTransaction(
+            request.sourceChain,
+            request.destinationChain,
+            request.amount,
+            request.token,
+            request.recipient || request.destinationAddress || '0x0000000000000000000000000000000000000000',
+            request.sourceAddress || request.recipient || '0x0000000000000000000000000000000000000000',
+            request.paymentId || request.metadata?.paymentId
+        );
+    }
+
+    /**
+     * Initiate a cross-chain bridge transaction with consensus
+     */
+    public async initiateBridgeWithConsensus(request: BridgeRequest): Promise<CrossChainTransaction> {
+        const transaction = await this.initiateBridge(request);
+        await this.processBridgeTransaction(transaction.id);
+        return transaction;
     }
 
     /**

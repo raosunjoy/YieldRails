@@ -257,6 +257,7 @@ describe('CrossChainService - Basic Operations', () => {
                 sourceChain: '1',
                 destinationChain: '137',
                 amount: 1000,
+                token: 'USDC',
                 sourceAddress: '0x742d35Cc6aB8827279cffFb92266',
                 destinationAddress: '0x8ba1f109551bD432803012645Hac136c'
             };

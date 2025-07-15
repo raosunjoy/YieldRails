@@ -793,4 +793,44 @@ export class PaymentService {
             logger.error(`Failed to send webhook notification for payment ${payment.id}:`, error);
         }
     }
+
+    /**
+     * Start yield generation for a payment
+     */
+    public async startYieldGeneration(paymentId: string): Promise<void> {
+        return await this.operations.startYieldGeneration(paymentId);
+    }
+
+    /**
+     * Update payment yield
+     */
+    public async updatePaymentYield(paymentId: string): Promise<void> {
+        try {
+            const payment = await this.prisma.payment.findUnique({
+                where: { id: paymentId }
+            });
+
+            if (!payment) {
+                throw new Error('Payment not found');
+            }
+
+            if (payment.status !== PaymentStatus.CONFIRMED) {
+                throw new Error('Payment must be confirmed to update yield');
+            }
+
+            // Calculate current yield
+            const currentYield = await this.yieldService.calculateYield(paymentId);
+            
+            // Update payment with new yield
+            await this.prisma.payment.update({
+                where: { id: paymentId },
+                data: { actualYield: currentYield }
+            });
+
+            logger.info(`Updated yield for payment ${paymentId}: ${currentYield}`);
+        } catch (error) {
+            logger.error(`Failed to update payment yield: ${error}`);
+            throw error;
+        }
+    }
 }
