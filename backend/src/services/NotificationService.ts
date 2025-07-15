@@ -277,6 +277,118 @@ export class NotificationService {
     }
 
     /**
+     * Send bridge completion notification
+     */
+    public async sendBridgeCompletionNotification(
+        paymentId: string,
+        bridgeTransactionId: string,
+        destinationAmount: string
+    ): Promise<void> {
+        try {
+            // Get payment details to find user
+            const payment = await prisma.payment.findUnique({
+                where: { id: paymentId },
+                include: { user: true }
+            });
+
+            if (!payment) {
+                logger.warn(`Payment not found for bridge completion notification: ${paymentId}`);
+                return;
+            }
+
+            const notification = await this.createNotification(
+                payment.userId,
+                'CROSS_CHAIN_COMPLETED' as any,
+                'Cross-Chain Transfer Completed',
+                `Your cross-chain transfer has been completed successfully. Amount received: ${destinationAmount}`,
+                {
+                    paymentId,
+                    bridgeTransactionId,
+                    destinationAmount,
+                    type: 'bridge_completion'
+                }
+            );
+
+            // Send email notification
+            if (payment.user.email) {
+                await this.sendEmail(
+                    payment.user.email,
+                    'Cross-Chain Transfer Completed - YieldRails',
+                    `Your cross-chain transfer has been completed successfully. Amount received: ${destinationAmount}`
+                );
+            }
+
+            // Broadcast real-time update
+            await this.broadcastRealTime(payment.userId, 'bridge:completed', {
+                paymentId,
+                bridgeTransactionId,
+                destinationAmount
+            });
+
+            logger.info('Bridge completion notification sent', { paymentId, bridgeTransactionId });
+
+        } catch (error) {
+            logger.error('Failed to send bridge completion notification', { error, paymentId });
+        }
+    }
+
+    /**
+     * Send bridge failure notification
+     */
+    public async sendBridgeFailureNotification(
+        paymentId: string,
+        bridgeTransactionId: string,
+        reason: string
+    ): Promise<void> {
+        try {
+            // Get payment details to find user
+            const payment = await prisma.payment.findUnique({
+                where: { id: paymentId },
+                include: { user: true }
+            });
+
+            if (!payment) {
+                logger.warn(`Payment not found for bridge failure notification: ${paymentId}`);
+                return;
+            }
+
+            const notification = await this.createNotification(
+                payment.userId,
+                'SYSTEM_UPDATE' as any,
+                'Cross-Chain Transfer Failed',
+                `Your cross-chain transfer has failed: ${reason}. Please contact support for assistance.`,
+                {
+                    paymentId,
+                    bridgeTransactionId,
+                    reason,
+                    type: 'bridge_failure'
+                }
+            );
+
+            // Send email notification
+            if (payment.user.email) {
+                await this.sendEmail(
+                    payment.user.email,
+                    'Cross-Chain Transfer Failed - YieldRails',
+                    `Your cross-chain transfer has failed: ${reason}. Please contact support for assistance.`
+                );
+            }
+
+            // Broadcast real-time update
+            await this.broadcastRealTime(payment.userId, 'bridge:failed', {
+                paymentId,
+                bridgeTransactionId,
+                reason
+            });
+
+            logger.info('Bridge failure notification sent', { paymentId, bridgeTransactionId, reason });
+
+        } catch (error) {
+            logger.error('Failed to send bridge failure notification', { error, paymentId });
+        }
+    }
+
+    /**
      * Broadcast real-time update via WebSocket
      */
     public async broadcastRealTime(userId: string, event: string, data: any): Promise<void> {

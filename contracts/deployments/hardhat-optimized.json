@@ -2,7 +2,7 @@
   "network": {
     "name": "hardhat",
     "chainId": 31337,
-    "deployedAt": "2025-07-13T02:05:53.728Z"
+    "deployedAt": "2025-07-15T04:59:18.307Z"
   },
   "deployer": {
     "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
