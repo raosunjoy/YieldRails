@@ -19,6 +19,7 @@ import { crossChainRouter } from './routes/crosschain';
 import { complianceRouter } from './routes/compliance';
 import { healthRouter } from './routes/health';
 import { authRouter } from './routes/auth';
+import { adminRouter } from './routes/admin';
 
 /**
  * YieldRails Backend API Server
@@ -82,6 +83,7 @@ class YieldRailsServer {
         this.app.use('/api/yield', authMiddleware, requestValidator, yieldRouter);
         this.app.use('/api/crosschain', authMiddleware, requestValidator, crossChainRouter);
         this.app.use('/api/compliance', authMiddleware, requestValidator, complianceRouter);
+        this.app.use('/api/admin', authMiddleware, requestValidator, adminRouter);
 
         // API documentation
         this.app.get('/api', (req, res) => {
@@ -96,6 +98,7 @@ class YieldRailsServer {
                     yield: '/api/yield',
                     crosschain: '/api/crosschain',
                     compliance: '/api/compliance',
+                    admin: '/api/admin',
                 },
                 documentation: 'https://docs.yieldrails.com/api',
             });

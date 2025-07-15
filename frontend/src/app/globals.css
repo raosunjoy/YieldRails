@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Stripe-inspired color palette */
+    --stripe-purple: 99 102 241;
+    --stripe-blue: 59 130 246;
+    --stripe-green: 34 197 94;
+    --stripe-orange: 251 146 60;
+    --stripe-red: 239 68 68;
+    --stripe-gray-50: 249 250 251;
+    --stripe-gray-100: 243 244 246;
+    --stripe-gray-200: 229 231 235;
+    --stripe-gray-300: 209 213 219;
+    --stripe-gray-400: 156 163 175;
+    --stripe-gray-500: 107 114 128;
+    --stripe-gray-600: 75 85 99;
+    --stripe-gray-700: 55 65 81;
+    --stripe-gray-800: 31 41 55;
+    --stripe-gray-900: 17 24 39;
+    
+    --background: var(--stripe-gray-50);
+    --foreground: var(--stripe-gray-900);
+    --card: 255 255 255;
+    --card-foreground: var(--stripe-gray-900);
+    --primary: var(--stripe-purple);
+    --primary-foreground: 255 255 255;
+    --secondary: var(--stripe-gray-100);
+    --secondary-foreground: var(--stripe-gray-900);
+    --muted: var(--stripe-gray-100);
+    --muted-foreground: var(--stripe-gray-500);
+    --accent: var(--stripe-blue);
+    --accent-foreground: 255 255 255;
+    --destructive: var(--stripe-red);
+    --destructive-foreground: 255 255 255;
+    --border: var(--stripe-gray-200);
+    --input: 255 255 255;
+    --ring: var(--stripe-purple);
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: var(--stripe-gray-900);
+    --foreground: var(--stripe-gray-50);
+    --card: var(--stripe-gray-800);
+    --card-foreground: var(--stripe-gray-50);
+    --primary: var(--stripe-purple);
+    --primary-foreground: 255 255 255;
+    --secondary: var(--stripe-gray-800);
+    --secondary-foreground: var(--stripe-gray-50);
+    --muted: var(--stripe-gray-800);
+    --muted-foreground: var(--stripe-gray-400);
+    --accent: var(--stripe-blue);
+    --accent-foreground: 255 255 255;
+    --destructive: var(--stripe-red);
+    --destructive-foreground: 255 255 255;
+    --border: var(--stripe-gray-700);
+    --input: var(--stripe-gray-800);
+    --ring: var(--stripe-purple);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+}
+
+@layer components {
+  /* Stripe-style buttons */
+  .btn-stripe {
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+  
+  .btn-primary {
+    @apply btn-stripe bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 shadow-sm;
+  }
+  
+  .btn-secondary {
+    @apply btn-stripe bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-indigo-500;
+  }
+  
+  /* Stripe-style inputs */
+  .input-stripe {
+    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-sm;
+  }
+  
+  /* Stripe-style cards */
+  .card-stripe {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm;
+  }
+  
+  .card-stripe-hover {
+    @apply card-stripe hover:shadow-md transition-shadow duration-200;
+  }
+  
+  /* Stripe-style gradients */
+  .gradient-stripe {
+    background: linear-gradient(135deg, rgb(99, 102, 241) 0%, rgb(59, 130, 246) 100%);
+  }
+  
+  .gradient-stripe-green {
+    background: linear-gradient(135deg, rgb(34, 197, 94) 0%, rgb(59, 130, 246) 100%);
+  }
+  
+  /* Stripe-style text */
+  .text-stripe-muted {
+    @apply text-gray-500;
+  }
+  
+  .text-stripe-primary {
+    @apply text-indigo-600;
+  }
+}
+
+/* Custom scrollbar - Stripe style */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-50;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}
+
+/* Stripe-style loading animations */
+@keyframes stripe-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-stripe-pulse {
+  animation: stripe-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes stripe-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-stripe-spin {
+  animation: stripe-spin 1s linear infinite;
+}
+
+/* Stripe-style focus ring */
+.focus-ring-stripe {
+  @apply focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2;
+}
+
+/* Stripe-style shadows */
+.shadow-stripe {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.shadow-stripe-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Stripe-style status indicators */
+.status-success {
+  @apply bg-green-50 text-green-800 border border-green-200;
+}
+
+.status-warning {
+  @apply bg-yellow-50 text-yellow-800 border border-yellow-200;
+}
+
+.status-error {
+  @apply bg-red-50 text-red-800 border border-red-200;
+}
+
+.status-info {
+  @apply bg-blue-50 text-blue-800 border border-blue-200;
+}

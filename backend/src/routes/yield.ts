@@ -1,19 +1,421 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
+import { body, param, query, validationResult } from 'express-validator';
+import { YieldService } from '../services/YieldService';
+import { authMiddleware } from '../middleware/auth';
+import { logger, logApiMetrics } from '../utils/logger';
 
 const router = Router();
+const yieldService = new YieldService();
 
-// Placeholder for yield management routes
-// GET /api/yield/strategies
-// GET /api/yield/apy
-// GET /api/yield/history/:paymentId
-// POST /api/yield/optimize
+/**
+ * Validation middleware
+ */
+const validateUserId = [
+    param('userId').isString().notEmpty().withMessage('User ID is required')
+];
 
-router.get('/strategies', (req, res) => {
-    res.json({ message: 'Yield strategies endpoint - TODO: implement' });
+const validatePaymentId = [
+    param('paymentId').isString().notEmpty().withMessage('Payment ID is required')
+];
+
+const validateStrategyId = [
+    param('strategyId').isString().notEmpty().withMessage('Strategy ID is required')
+];
+
+const validateOptimization = [
+    body('amount').isNumeric().isFloat({ min: 0.01 }).withMessage('Amount must be a positive number'),
+    body('riskTolerance').optional().isIn(['low', 'medium', 'high']).withMessage('Risk tolerance must be low, medium, or high')
+];
+
+const validatePagination = [
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+    query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be non-negative')
+];
+
+/**
+ * Helper function to handle validation errors
+ */
+const handleValidationErrors = (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            error: 'Validation Error',
+            details: errors.array(),
+        });
+    }
+    return null;
+};
+
+/**
+ * GET /api/yield/strategies
+ * Get available yield strategies
+ */
+router.get('/strategies', async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const strategies = await yieldService.getAvailableStrategies();
+
+        logApiMetrics('/api/yield/strategies', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: {
+                strategies,
+                count: strategies.length
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error('Error getting yield strategies:', error);
+        logApiMetrics('/api/yield/strategies', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get yield strategies',
+            details: err.message
+        });
+    }
 });
 
-router.get('/apy', (req, res) => {
-    res.json({ message: 'Current APY endpoint - TODO: implement' });
+/**
+ * GET /api/yield/strategies/:strategyId/apy
+ * Get current APY for a specific strategy
+ */
+router.get('/strategies/:strategyId/apy', validateStrategyId, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const { strategyId } = req.params;
+        const apy = await yieldService.getCurrentAPY(strategyId);
+
+        logApiMetrics('/api/yield/strategies/:id/apy', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: {
+                strategyId,
+                currentAPY: apy,
+                timestamp: new Date()
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error getting APY for strategy ${req.params.strategyId}:`, error);
+        logApiMetrics('/api/yield/strategies/:id/apy', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get strategy APY',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/yield/payment/:paymentId/current
+ * Get current yield for a payment
+ */
+router.get('/payment/:paymentId/current', authMiddleware, validatePaymentId, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const { paymentId } = req.params;
+        const currentYield = await yieldService.calculateCurrentYield(paymentId);
+
+        logApiMetrics('/api/yield/payment/:id/current', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: {
+                paymentId,
+                currentYield,
+                timestamp: new Date()
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error getting current yield for payment ${req.params.paymentId}:`, error);
+        logApiMetrics('/api/yield/payment/:id/current', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get current yield',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/yield/payment/:paymentId/final
+ * Calculate final yield for a payment
+ */
+router.get('/payment/:paymentId/final', authMiddleware, validatePaymentId, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const { paymentId } = req.params;
+        const finalYield = await yieldService.calculateFinalYield(paymentId);
+
+        logApiMetrics('/api/yield/payment/:id/final', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: {
+                paymentId,
+                finalYield,
+                timestamp: new Date()
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error calculating final yield for payment ${req.params.paymentId}:`, error);
+        logApiMetrics('/api/yield/payment/:id/final', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to calculate final yield',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * POST /api/yield/optimize
+ * Get yield optimization recommendations
+ */
+router.post('/optimize', authMiddleware, validateOptimization, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({
+                error: 'Unauthorized',
+                message: 'User authentication required'
+            });
+        }
+
+        const { amount, riskTolerance } = req.body;
+        const optimization = await yieldService.optimizeAllocation(userId, parseFloat(amount));
+
+        logApiMetrics('/api/yield/optimize', 'POST', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: {
+                userId,
+                amount: parseFloat(amount),
+                riskTolerance: riskTolerance || 'medium',
+                optimization,
+                timestamp: new Date()
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error('Error optimizing yield allocation:', error);
+        logApiMetrics('/api/yield/optimize', 'POST', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to optimize yield allocation',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/yield/user/:userId/history
+ * Get yield history for a user
+ */
+router.get('/user/:userId/history', authMiddleware, validateUserId, validatePagination, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const { userId } = req.params;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = parseInt(req.query.offset as string) || 0;
+
+        // Authorization check - users can only see their own history
+        if (req.user?.id !== userId && req.user?.role !== 'admin') {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'Access denied to user yield history'
+            });
+        }
+
+        const history = await yieldService.getYieldHistory(userId, limit, offset);
+
+        logApiMetrics('/api/yield/user/:id/history', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: {
+                userId,
+                history: history.earnings,
+                analytics: history.analytics,
+                pagination: {
+                    limit,
+                    offset,
+                    total: history.total
+                }
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error getting yield history for user ${req.params.userId}:`, error);
+        logApiMetrics('/api/yield/user/:id/history', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get yield history',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/yield/user/:userId/performance
+ * Get yield performance metrics for a user
+ */
+router.get('/user/:userId/performance', authMiddleware, validateUserId, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const { userId } = req.params;
+
+        // Authorization check
+        if (req.user?.id !== userId && req.user?.role !== 'admin') {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'Access denied to user performance data'
+            });
+        }
+
+        const performance = await yieldService.getUserPerformance(userId);
+
+        logApiMetrics('/api/yield/user/:id/performance', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: {
+                userId,
+                performance,
+                timestamp: new Date()
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error getting yield performance for user ${req.params.userId}:`, error);
+        logApiMetrics('/api/yield/user/:id/performance', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get yield performance',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * POST /api/yield/payment/:paymentId/start
+ * Start yield generation for a payment
+ */
+router.post('/payment/:paymentId/start', authMiddleware, validatePaymentId, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const { paymentId } = req.params;
+        await yieldService.startYieldGeneration(paymentId, req.body);
+
+        logApiMetrics('/api/yield/payment/:id/start', 'POST', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            message: 'Yield generation started successfully',
+            data: {
+                paymentId,
+                timestamp: new Date()
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error starting yield generation for payment ${req.params.paymentId}:`, error);
+        logApiMetrics('/api/yield/payment/:id/start', 'POST', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to start yield generation',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/yield/analytics
+ * Get overall yield analytics
+ */
+router.get('/analytics', authMiddleware, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        // Only admins can access overall analytics
+        if (req.user?.role !== 'admin') {
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'Admin access required for yield analytics'
+            });
+        }
+
+        const analytics = await yieldService.getOverallAnalytics();
+
+        logApiMetrics('/api/yield/analytics', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: analytics
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error('Error getting yield analytics:', error);
+        logApiMetrics('/api/yield/analytics', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get yield analytics',
+            details: err.message
+        });
+    }
 });
 
 export { router as yieldRouter };

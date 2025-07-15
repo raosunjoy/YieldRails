@@ -146,7 +146,7 @@ export const generateToken = (user: AuthenticatedUser): string => {
     };
     
     const options: jwt.SignOptions = {
-        expiresIn: config.JWT_EXPIRES_IN,
+        expiresIn: config.JWT_EXPIRES_IN as string,
         issuer: 'yieldrails-api',
         audience: 'yieldrails-client',
     };

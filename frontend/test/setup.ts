@@ -1,5 +1,4 @@
 import '@testing-library/jest-dom';
-import { jest } from '@jest/globals';
 
 // Mock Next.js router
 jest.mock('next/router', () => ({
@@ -24,91 +23,101 @@ jest.mock('next/router', () => ({
   },
 }));
 
-// Mock Next.js Image component
-jest.mock('next/image', () => ({
-  __esModule: true,
-  default: (props: any) => {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img {...props} alt={props.alt} />;
+// Mock Next.js navigation
+jest.mock('next/navigation', () => ({
+  useRouter() {
+    return {
+      push: jest.fn(),
+      replace: jest.fn(),
+      prefetch: jest.fn(),
+      back: jest.fn(),
+      forward: jest.fn(),
+      refresh: jest.fn(),
+    };
+  },
+  useSearchParams() {
+    return new URLSearchParams();
+  },
+  usePathname() {
+    return '/';
   },
 }));
 
-// Mock wagmi hooks
-jest.mock('wagmi', () => ({
-  useAccount: jest.fn(() => ({
-    address: undefined,
-    isConnected: false,
-  })),
-  useConnect: jest.fn(() => ({
-    connect: jest.fn(),
-    connectors: [],
-  })),
-  useDisconnect: jest.fn(() => ({
-    disconnect: jest.fn(),
-  })),
-  useBalance: jest.fn(() => ({
-    data: undefined,
-    isLoading: false,
-  })),
-  useContractRead: jest.fn(() => ({
-    data: undefined,
-    isLoading: false,
-  })),
-  useContractWrite: jest.fn(() => ({
-    write: jest.fn(),
-    isLoading: false,
-  })),
-}));
+// Mock localStorage
+const localStorageMock = {
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+};
+global.localStorage = localStorageMock;
 
-// Mock ethers
-jest.mock('ethers', () => ({
-  ethers: {
-    utils: {
-      formatEther: jest.fn(),
-      parseEther: jest.fn(),
-    },
-  },
-}));
+// Mock sessionStorage
+const sessionStorageMock = {
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+};
+global.sessionStorage = sessionStorageMock;
 
-// Global test setup
+// Mock window.matchMedia
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: jest.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(), // deprecated
+    removeListener: jest.fn(), // deprecated
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  })),
+});
+
+// Mock IntersectionObserver
+global.IntersectionObserver = class IntersectionObserver {
+  constructor() {}
+  observe() {
+    return null;
+  }
+  disconnect() {
+    return null;
+  }
+  unobserve() {
+    return null;
+  }
+};
+
+// Mock ResizeObserver
+global.ResizeObserver = class ResizeObserver {
+  constructor() {}
+  observe() {
+    return null;
+  }
+  disconnect() {
+    return null;
+  }
+  unobserve() {
+    return null;
+  }
+};
+
+// Suppress console errors during tests
+const originalError = console.error;
 beforeAll(() => {
-  // Mock window.matchMedia
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: jest.fn().mockImplementation(query => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: jest.fn(), // deprecated
-      removeListener: jest.fn(), // deprecated
-      addEventListener: jest.fn(),
-      removeEventListener: jest.fn(),
-      dispatchEvent: jest.fn(),
-    })),
-  });
-
-  // Mock IntersectionObserver
-  global.IntersectionObserver = jest.fn().mockImplementation(() => ({
-    observe: jest.fn(),
-    unobserve: jest.fn(),
-    disconnect: jest.fn(),
-  }));
-
-  // Mock ResizeObserver
-  global.ResizeObserver = jest.fn().mockImplementation(() => ({
-    observe: jest.fn(),
-    unobserve: jest.fn(),
-    disconnect: jest.fn(),
-  }));
+  console.error = (...args: any[]) => {
+    if (
+      typeof args[0] === 'string' &&
+      args[0].includes('Warning: ReactDOM.render is no longer supported')
+    ) {
+      return;
+    }
+    originalError.call(console, ...args);
+  };
 });
 
-beforeEach(() => {
-  jest.clearAllMocks();
+afterAll(() => {
+  console.error = originalError;
 });
-
-afterEach(() => {
-  jest.restoreAllMocks();
-});
-
-// Increase timeout for frontend tests
-jest.setTimeout(10000);
