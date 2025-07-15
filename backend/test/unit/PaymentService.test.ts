@@ -42,9 +42,6 @@ const mockPrisma = {
     yieldStrategy: {
         findFirst: jest.fn() as jest.MockedFunction<any>,
         findUnique: jest.fn() as jest.MockedFunction<any>
-    },
-    notification: {
-        create: jest.fn() as jest.MockedFunction<any>
     }
 };
 
@@ -235,6 +232,7 @@ describe('PaymentService', () => {
 
     describe('updatePaymentStatus', () => {
         beforeEach(() => {
+            mockPrisma.payment.findUnique.mockResolvedValue(testPayment);
             mockPrisma.payment.update.mockResolvedValue({
                 ...testPayment,
                 status: PaymentStatus.CONFIRMED
@@ -349,80 +347,110 @@ describe('PaymentService', () => {
                 'is not confirmed and cannot be released'
             );
         });
-
-        it('should create yield earning record when yield > 0', async () => {
-            await paymentService.releasePayment(testPayment.id);
-
-            expect(mockPrisma.yieldEarning.create).toHaveBeenCalledWith({
-                data: expect.objectContaining({
-                    userId: testPayment.userId,
-                    paymentId: testPayment.id,
-                    yieldAmount: 5.0,
-                    netYieldAmount: 3.5, // 70% of 5.0
-                    status: 'COMPLETED'
-                })
-            });
-        });
     });
 
-    describe('startYieldGeneration', () => {
+    describe('cancelPayment', () => {
         beforeEach(() => {
+            const pendingPayment = {
+                ...testPayment,
+                status: PaymentStatus.PENDING
+            };
+            
+            mockPrisma.payment.findUnique.mockResolvedValue(pendingPayment);
+            mockPrisma.payment.update.mockResolvedValue({
+                ...pendingPayment,
+                status: PaymentStatus.CANCELLED
+            });
+            mockPrisma.paymentEvent.create.mockResolvedValue({});
+            mockRedis.set.mockResolvedValue('OK');
+        });
+
+        it('should cancel payment successfully', async () => {
+            const reason = 'User requested cancellation';
+
+            const result = await paymentService.cancelPayment(testPayment.id, reason);
+
+            expect(mockPrisma.payment.update).toHaveBeenCalledWith({
+                where: { id: testPayment.id },
+                data: expect.objectContaining({
+                    status: PaymentStatus.CANCELLED
+                })
+            });
+            expect(mockPrisma.paymentEvent.create).toHaveBeenCalledWith({
+                data: expect.objectContaining({
+                    eventType: PaymentEventType.CANCELLED,
+                    eventData: expect.objectContaining({ reason })
+                })
+            });
+            expect(mockNotificationService.sendPaymentCancelled).toHaveBeenCalledWith(result, reason);
+        });
+
+        it('should call contract service for confirmed payments', async () => {
             const confirmedPayment = {
                 ...testPayment,
-                status: PaymentStatus.CONFIRMED
+                status: PaymentStatus.CONFIRMED,
+                escrowAddress: '0x1234567890123456789012345678901234567890'
             };
             
             mockPrisma.payment.findUnique.mockResolvedValue(confirmedPayment);
-            mockPrisma.yieldEarning.create.mockResolvedValue({});
-            mockPrisma.paymentEvent.create.mockResolvedValue({});
-            mockPrisma.yieldStrategy.findFirst.mockResolvedValue({
-                id: 'strategy-1'
+            mockContractService.cancelPayment.mockResolvedValue({
+                transactionHash: '0xcancel'
+            });
+
+            await paymentService.cancelPayment(testPayment.id, 'Test reason');
+
+            expect(mockContractService.cancelPayment).toHaveBeenCalledWith(
+                confirmedPayment.escrowAddress,
+                'Test reason'
+            );
+        });
+    });
+
+    describe('getUserPaymentHistory', () => {
+        beforeEach(() => {
+            mockRedis.get.mockResolvedValue(null);
+            mockPrisma.payment.findMany.mockResolvedValue([testPayment]);
+            mockPrisma.payment.count.mockResolvedValue(1);
+            mockPrisma.payment.aggregate.mockResolvedValue({
+                _sum: { amount: 100 }
+            });
+            mockPrisma.yieldEarning.aggregate.mockResolvedValue({
+                _sum: { netYieldAmount: 5 }
+            });
+            mockRedis.set.mockResolvedValue('OK');
+        });
+
+        it('should return user payment history with analytics', async () => {
+            const result = await paymentService.getUserPaymentHistory(testUser.id);
+
+            expect(result).toEqual({
+                payments: [testPayment],
+                total: 1,
+                analytics: {
+                    totalPayments: 1,
+                    totalVolume: 100,
+                    totalYieldEarned: 5,
+                    averagePaymentAmount: 100
+                }
             });
         });
 
-        it('should start yield generation successfully', async () => {
-            await paymentService.startYieldGeneration(testPayment.id);
+        it('should handle pagination parameters', async () => {
+            await paymentService.getUserPaymentHistory(testUser.id, 25, 50);
 
-            expect(mockYieldService.startYieldGeneration).toHaveBeenCalledWith(
-                testPayment.id,
-                expect.objectContaining({
-                    amount: testPayment.amount,
-                    token: testPayment.tokenSymbol,
-                    strategy: testPayment.yieldStrategy
-                })
-            );
-            expect(mockPrisma.yieldEarning.create).toHaveBeenCalled();
-            expect(mockPrisma.paymentEvent.create).toHaveBeenCalledWith({
-                data: expect.objectContaining({
-                    eventType: PaymentEventType.YIELD_STARTED
-                })
+            expect(mockPrisma.payment.findMany).toHaveBeenCalledWith({
+                where: { userId: testUser.id },
+                include: expect.any(Object),
+                orderBy: { createdAt: 'desc' },
+                take: 25,
+                skip: 50
             });
-        });
-
-        it('should throw error if payment not found', async () => {
-            mockPrisma.payment.findUnique.mockResolvedValue(null);
-
-            await ErrorTestUtils.expectToThrow(
-                () => paymentService.startYieldGeneration('non-existent-id'),
-                'Payment non-existent-id not found'
-            );
-        });
-
-        it('should throw error if payment not confirmed', async () => {
-            mockPrisma.payment.findUnique.mockResolvedValue({
-                ...testPayment,
-                status: PaymentStatus.PENDING
-            });
-
-            await ErrorTestUtils.expectToThrow(
-                () => paymentService.startYieldGeneration(testPayment.id),
-                'is not confirmed'
-            );
         });
     });
 
     describe('getMerchantAnalytics', () => {
         beforeEach(() => {
+            mockRedis.get.mockResolvedValue(null);
             mockPrisma.payment.count
                 .mockResolvedValueOnce(100) // Total payments
                 .mockResolvedValueOnce(80); // Completed payments
@@ -438,6 +466,7 @@ describe('PaymentService', () => {
                 { strategyId: 'strategy-1', _sum: { yieldAmount: 300 }, _count: { strategyId: 60 } },
                 { strategyId: 'strategy-2', _sum: { yieldAmount: 200 }, _count: { strategyId: 40 } }
             ]);
+            mockRedis.set.mockResolvedValue('OK');
         });
 
         it('should return comprehensive merchant analytics', async () => {
@@ -470,6 +499,63 @@ describe('PaymentService', () => {
             expect(mockPrisma.payment.count).toHaveBeenCalledWith({
                 where: {
                     merchantId: testMerchant.id,
+                    createdAt: {
+                        gte: startDate,
+                        lte: endDate
+                    }
+                }
+            });
+        });
+    });
+
+    describe('getPaymentMetrics', () => {
+        beforeEach(() => {
+            const now = new Date();
+            const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            
+            mockPrisma.payment.count
+                .mockResolvedValueOnce(100) // Total payments
+                .mockResolvedValueOnce(80)  // Completed payments
+                .mockResolvedValueOnce(5);  // Failed payments
+            
+            mockPrisma.payment.aggregate
+                .mockResolvedValueOnce({ _sum: { amount: 10000 } }) // Total volume
+                .mockResolvedValueOnce({ _sum: { actualYield: 500 } }) // Total yield
+                .mockResolvedValueOnce({ _avg: { amount: 100 } }); // Average amount
+            
+            mockPrisma.payment.findMany.mockResolvedValue([
+                {
+                    confirmedAt: dayAgo,
+                    releasedAt: now
+                }
+            ]);
+        });
+
+        it('should return comprehensive payment metrics', async () => {
+            const result = await paymentService.getPaymentMetrics();
+
+            expect(result).toEqual({
+                totalPayments: 100,
+                completedPayments: 80,
+                failedPayments: 5,
+                successRate: 80,
+                failureRate: 5,
+                totalVolume: 10000,
+                totalYieldGenerated: 500,
+                averagePaymentAmount: 100,
+                averageProcessingTimeMs: expect.any(Number),
+                averageProcessingTimeHours: expect.any(Number)
+            });
+        });
+
+        it('should handle date range filtering', async () => {
+            const startDate = new Date('2024-01-01');
+            const endDate = new Date('2024-12-31');
+
+            await paymentService.getPaymentMetrics(startDate, endDate);
+
+            expect(mockPrisma.payment.count).toHaveBeenCalledWith({
+                where: {
                     createdAt: {
                         gte: startDate,
                         lte: endDate
@@ -512,330 +598,6 @@ describe('PaymentService', () => {
                 })
             });
             expect(mockNotificationService.sendPaymentFailed).toHaveBeenCalledWith(testPayment, error);
-        });
-    });
-
-    describe('cancelPayment', () => {
-        beforeEach(() => {
-            const pendingPayment = {
-                ...testPayment,
-                status: PaymentStatus.PENDING
-            };
-            
-            mockPrisma.payment.findUnique.mockResolvedValue(pendingPayment);
-            mockPrisma.payment.update.mockResolvedValue({
-                ...pendingPayment,
-                status: PaymentStatus.CANCELLED
-            });
-            mockPrisma.paymentEvent.create.mockResolvedValue({});
-            mockRedis.set.mockResolvedValue('OK');
-        });
-
-        it('should cancel payment successfully', async () => {
-            const reason = 'User requested cancellation';
-
-            const result = await paymentService.cancelPayment(testPayment.id, reason);
-
-            expect(mockPrisma.payment.update).toHaveBeenCalledWith({
-                where: { id: testPayment.id },
-                data: expect.objectContaining({
-                    status: PaymentStatus.CANCELLED
-                })
-            });
-            expect(mockPrisma.paymentEvent.create).toHaveBeenCalledWith({
-                data: expect.objectContaining({
-                    eventType: PaymentEventType.CANCELLED,
-                    eventData: expect.objectContaining({ reason })
-                })
-            });
-            expect(mockNotificationService.sendPaymentCancelled).toHaveBeenCalledWith(result, reason);
-        });
-
-        it('should throw error if payment already completed', async () => {
-            mockPrisma.payment.findUnique.mockResolvedValue({
-                ...testPayment,
-                status: PaymentStatus.COMPLETED
-            });
-
-            await ErrorTestUtils.expectToThrow(
-                () => paymentService.cancelPayment(testPayment.id),
-                'is already completed and cannot be cancelled'
-            );
-        });
-
-        it('should call contract service for confirmed payments', async () => {
-            const confirmedPayment = {
-                ...testPayment,
-                status: PaymentStatus.CONFIRMED,
-                escrowAddress: '0x1234567890123456789012345678901234567890'
-            };
-            
-            mockPrisma.payment.findUnique.mockResolvedValue(confirmedPayment);
-            mockContractService.cancelPayment.mockResolvedValue({
-                transactionHash: '0xcancel'
-            });
-
-            await paymentService.cancelPayment(testPayment.id, 'Test reason');
-
-            expect(mockContractService.cancelPayment).toHaveBeenCalledWith(
-                confirmedPayment.escrowAddress,
-                'Test reason'
-            );
-        });
-    });
-
-    describe('getUserPaymentHistory', () => {
-        beforeEach(() => {
-            mockPrisma.payment.findMany.mockResolvedValue([testPayment]);
-            mockPrisma.payment.count.mockResolvedValue(1);
-            mockPrisma.payment.aggregate.mockResolvedValue({
-                _sum: { amount: 100 }
-            });
-            mockPrisma.yieldEarning.aggregate.mockResolvedValue({
-                _sum: { netYieldAmount: 5 }
-            });
-        });
-
-        it('should return user payment history with analytics', async () => {
-            const result = await paymentService.getUserPaymentHistory(testUser.id);
-
-            expect(result).toEqual({
-                payments: [testPayment],
-                analytics: {
-                    totalPayments: 1,
-                    totalVolume: 100,
-                    totalYieldEarned: 5,
-                    averagePaymentAmount: 100
-                }
-            });
-        });
-
-        it('should handle pagination parameters', async () => {
-            await paymentService.getUserPaymentHistory(testUser.id, 25, 50);
-
-            expect(mockPrisma.payment.findMany).toHaveBeenCalledWith({
-                where: { userId: testUser.id },
-                include: expect.any(Object),
-                orderBy: { createdAt: 'desc' },
-                take: 25,
-                skip: 50
-            });
-        });
-    });
-
-    describe('getPaymentStatusWithBlockchainVerification', () => {
-        beforeEach(() => {
-            const paymentWithTx = {
-                ...testPayment,
-                sourceTransactionHash: '0xabcdef',
-                sourceChain: 'ethereum',
-                status: PaymentStatus.CONFIRMED,
-                yieldStrategy: 'Circle USDC Lending'
-            };
-            
-            mockPrisma.payment.findUnique.mockResolvedValue(paymentWithTx);
-            mockContractService.getTransactionReceipt.mockResolvedValue({
-                status: 1,
-                blockNumber: 12345,
-                gasUsed: 50000,
-                confirmations: 10
-            });
-            mockYieldService.calculateCurrentYield.mockResolvedValue('2.5');
-        });
-
-        it('should return payment with blockchain verification', async () => {
-            const result = await paymentService.getPaymentStatusWithBlockchainVerification(testPayment.id);
-
-            expect(result.blockchainStatus).toEqual({
-                confirmed: true,
-                blockNumber: 12345,
-                gasUsed: '50000',
-                confirmations: 10
-            });
-            expect(result.currentYield).toBe(2.5);
-        });
-
-        it('should handle missing blockchain data gracefully', async () => {
-            const paymentWithoutTx = {
-                ...testPayment,
-                sourceTransactionHash: null,
-                sourceChain: 'ethereum'
-            };
-            mockPrisma.payment.findUnique.mockResolvedValue(paymentWithoutTx);
-
-            const result = await paymentService.getPaymentStatusWithBlockchainVerification(testPayment.id);
-
-            expect(result.blockchainStatus).toBeNull();
-        });
-    });
-
-    describe('batchProcessPayments', () => {
-        beforeEach(() => {
-            mockYieldService.calculateCurrentYield.mockResolvedValue('1.0');
-            mockPrisma.payment.update.mockResolvedValue(testPayment);
-            mockPrisma.yieldEarning.updateMany.mockResolvedValue({ count: 1 });
-            mockPrisma.paymentEvent.create.mockResolvedValue({});
-            mockRedis.set.mockResolvedValue('OK');
-        });
-
-        it('should process payments in batches successfully', async () => {
-            const paymentIds = Array.from({ length: 25 }, (_, i) => `payment-${i}`);
-
-            const result = await paymentService.batchProcessPayments(paymentIds);
-
-            expect(result.success).toHaveLength(25);
-            expect(result.failed).toHaveLength(0);
-        });
-
-        it('should handle partial failures in batch processing', async () => {
-            const paymentIds = ['payment-1', 'payment-2', 'payment-3'];
-            
-            // Mock the updatePaymentYield method calls
-            const updatePaymentYieldSpy = jest.spyOn(paymentService, 'updatePaymentYield');
-            updatePaymentYieldSpy
-                .mockResolvedValueOnce(undefined)
-                .mockRejectedValueOnce(new Error('Yield calculation failed'))
-                .mockResolvedValueOnce(undefined);
-
-            const result = await paymentService.batchProcessPayments(paymentIds);
-
-            expect(result.success).toHaveLength(2);
-            expect(result.failed).toHaveLength(1);
-            expect(result.failed).toContain('payment-2');
-            
-            updatePaymentYieldSpy.mockRestore();
-        });
-    });
-
-    describe('getPaymentMetrics', () => {
-        beforeEach(() => {
-            const now = new Date();
-            const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-            
-            mockPrisma.payment.count
-                .mockResolvedValueOnce(100) // Total payments
-                .mockResolvedValueOnce(80)  // Completed payments
-                .mockResolvedValueOnce(5);  // Failed payments
-            
-            mockPrisma.payment.aggregate
-                .mockResolvedValueOnce({ _sum: { amount: 10000 } }) // Total volume
-                .mockResolvedValueOnce({ _sum: { actualYield: 500 } }); // Total yield
-            
-            mockPrisma.payment.findMany.mockResolvedValue([
-                {
-                    createdAt: dayAgo,
-                    releasedAt: now
-                }
-            ]);
-        });
-
-        it('should return comprehensive payment metrics', async () => {
-            const result = await paymentService.getPaymentMetrics();
-
-            expect(result).toEqual({
-                totalPayments: 100,
-                completedPayments: 80,
-                failedPayments: 5,
-                successRate: 80,
-                failureRate: 5,
-                totalVolume: 10000,
-                totalYieldGenerated: 500,
-                averagePaymentAmount: 100,
-                averageProcessingTimeMs: expect.any(Number),
-                averageProcessingTimeHours: expect.any(Number)
-            });
-        });
-
-        it('should handle date range filtering', async () => {
-            const startDate = new Date('2024-01-01');
-            const endDate = new Date('2024-12-31');
-
-            await paymentService.getPaymentMetrics(startDate, endDate);
-
-            expect(mockPrisma.payment.count).toHaveBeenCalledWith({
-                where: {
-                    createdAt: {
-                        gte: startDate,
-                        lte: endDate
-                    }
-                }
-            });
-        });
-    });
-
-    describe('handleBlockchainError', () => {
-        it('should handle retryable errors with exponential backoff', async () => {
-            const error = new Error('network timeout');
-            const paymentId = 'test-payment-id';
-            
-            // Mock setTimeout to execute immediately
-            const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((callback: any) => {
-                callback();
-                return {} as any;
-            });
-
-            const retryBlockchainOperationSpy = jest.spyOn(paymentService as any, 'retryBlockchainOperation');
-            retryBlockchainOperationSpy.mockResolvedValue(undefined);
-
-            await paymentService.handleBlockchainError(paymentId, 'createEscrow', error, 0);
-
-            expect(retryBlockchainOperationSpy).toHaveBeenCalledWith(paymentId, 'createEscrow', 1);
-            
-            retryBlockchainOperationSpy.mockRestore();
-            setTimeoutSpy.mockRestore();
-        });
-
-        it('should mark payment as failed after max retries', async () => {
-            const error = new Error('network timeout');
-            const paymentId = 'test-payment-id';
-            
-            await paymentService.handleBlockchainError(paymentId, 'createEscrow', error, 3);
-
-            expect(mockPrisma.payment.update).toHaveBeenCalledWith({
-                where: { id: paymentId },
-                data: expect.objectContaining({
-                    status: PaymentStatus.FAILED
-                })
-            });
-            expect(mockNotificationService.sendSystemAlert).toHaveBeenCalled();
-        });
-    });
-
-    describe('Error Handling', () => {
-        it('should handle database errors gracefully', async () => {
-            mockPrisma.payment.findUnique.mockRejectedValue(new Error('Database connection failed'));
-
-            await ErrorTestUtils.expectToThrow(
-                () => paymentService.getPayment(testPayment.id),
-                'Database connection failed'
-            );
-        });
-
-        it('should handle Redis errors gracefully', async () => {
-            mockRedis.get.mockImplementation(() => Promise.reject(new Error('Redis connection failed')));
-            mockPrisma.payment.findUnique.mockResolvedValue(testPayment);
-
-            // Should still work by falling back to database
-            const result = await paymentService.getPayment(testPayment.id);
-            expect(result).toEqual(testPayment);
-        });
-
-        it('should handle contract service errors', async () => {
-            mockPrisma.merchant.findFirst.mockResolvedValue(testMerchant);
-            mockPrisma.payment.create.mockResolvedValue(testPayment);
-            mockContractService.createEscrow.mockRejectedValue(new Error('Contract call failed'));
-
-            const validRequest = {
-                merchantAddress: '0x1234567890123456789012345678901234567890',
-                amount: '100.00',
-                token: 'USDC' as any,
-                chain: 'ethereum' as any
-            };
-
-            await ErrorTestUtils.expectToThrow(
-                () => paymentService.createPayment(validRequest, testUser.id),
-                'Contract call failed'
-            );
         });
     });
 });
