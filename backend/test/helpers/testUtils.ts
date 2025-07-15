@@ -84,20 +84,23 @@ export class BlockchainTestUtils {
    * Create mock contract instance
    */
   static createMockContract() {
+    const deployedMock = jest.fn() as jest.MockedFunction<any>;
+    deployedMock.mockResolvedValue(true);
+    
     return {
       address: '0x1234567890123456789012345678901234567890',
       interface: {
-        encodeFunctionData: jest.fn(),
-        decodeFunctionResult: jest.fn(),
+        encodeFunctionData: jest.fn() as jest.MockedFunction<any>,
+        decodeFunctionResult: jest.fn() as jest.MockedFunction<any>,
       },
       connect: jest.fn().mockReturnThis(),
-      deployed: jest.fn().mockResolvedValue(true),
+      deployed: deployedMock,
       // Add common contract methods
-      balanceOf: jest.fn(),
-      transfer: jest.fn(),
-      approve: jest.fn(),
-      deposit: jest.fn(),
-      withdraw: jest.fn(),
+      balanceOf: jest.fn() as jest.MockedFunction<any>,
+      transfer: jest.fn() as jest.MockedFunction<any>,
+      approve: jest.fn() as jest.MockedFunction<any>,
+      deposit: jest.fn() as jest.MockedFunction<any>,
+      withdraw: jest.fn() as jest.MockedFunction<any>,
     };
   }
 
@@ -105,13 +108,16 @@ export class BlockchainTestUtils {
    * Create mock wallet
    */
   static createMockWallet() {
+    const getBalanceMock = jest.fn() as jest.MockedFunction<any>;
+    getBalanceMock.mockResolvedValue('1000000000000000000'); // 1 ETH
+    
     return {
       address: '0x1234567890123456789012345678901234567890',
       privateKey: '0x0123456789012345678901234567890123456789012345678901234567890123',
       connect: jest.fn().mockReturnThis(),
-      getBalance: jest.fn().mockResolvedValue('1000000000000000000'), // 1 ETH
-      signTransaction: jest.fn(),
-      sendTransaction: jest.fn(),
+      getBalance: getBalanceMock,
+      signTransaction: jest.fn() as jest.MockedFunction<any>,
+      sendTransaction: jest.fn() as jest.MockedFunction<any>,
     };
   }
 
@@ -119,14 +125,26 @@ export class BlockchainTestUtils {
    * Create mock provider
    */
   static createMockProvider() {
+    const getNetworkMock = jest.fn() as jest.MockedFunction<any>;
+    const getBalanceMock = jest.fn() as jest.MockedFunction<any>;
+    const getTransactionCountMock = jest.fn() as jest.MockedFunction<any>;
+    const estimateGasMock = jest.fn() as jest.MockedFunction<any>;
+    const getGasPriceMock = jest.fn() as jest.MockedFunction<any>;
+    
+    getNetworkMock.mockResolvedValue({ chainId: 1, name: 'mainnet' });
+    getBalanceMock.mockResolvedValue('1000000000000000000');
+    getTransactionCountMock.mockResolvedValue(0);
+    estimateGasMock.mockResolvedValue('21000');
+    getGasPriceMock.mockResolvedValue('20000000000');
+    
     return {
-      getNetwork: jest.fn().mockResolvedValue({ chainId: 1, name: 'mainnet' }),
-      getBalance: jest.fn().mockResolvedValue('1000000000000000000'),
-      getTransactionCount: jest.fn().mockResolvedValue(0),
-      estimateGas: jest.fn().mockResolvedValue('21000'),
-      getGasPrice: jest.fn().mockResolvedValue('20000000000'),
-      sendTransaction: jest.fn(),
-      waitForTransaction: jest.fn(),
+      getNetwork: getNetworkMock,
+      getBalance: getBalanceMock,
+      getTransactionCount: getTransactionCountMock,
+      estimateGas: estimateGasMock,
+      getGasPrice: getGasPriceMock,
+      sendTransaction: jest.fn() as jest.MockedFunction<any>,
+      waitForTransaction: jest.fn() as jest.MockedFunction<any>,
     };
   }
 }
@@ -235,17 +253,17 @@ export class RedisTestUtils {
    */
   static createMockRedisClient() {
     return {
-      get: jest.fn(),
-      set: jest.fn(),
-      del: jest.fn(),
-      exists: jest.fn(),
-      expire: jest.fn(),
-      ttl: jest.fn(),
-      flushall: jest.fn(),
-      quit: jest.fn(),
-      on: jest.fn(),
-      connect: jest.fn(),
-      disconnect: jest.fn(),
+      get: jest.fn() as jest.MockedFunction<any>,
+      set: jest.fn() as jest.MockedFunction<any>,
+      del: jest.fn() as jest.MockedFunction<any>,
+      exists: jest.fn() as jest.MockedFunction<any>,
+      expire: jest.fn() as jest.MockedFunction<any>,
+      ttl: jest.fn() as jest.MockedFunction<any>,
+      flushall: jest.fn() as jest.MockedFunction<any>,
+      quit: jest.fn() as jest.MockedFunction<any>,
+      on: jest.fn() as jest.MockedFunction<any>,
+      connect: jest.fn() as jest.MockedFunction<any>,
+      disconnect: jest.fn() as jest.MockedFunction<any>,
     };
   }
 }

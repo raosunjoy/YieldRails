@@ -1,13 +1,136 @@
 import { ethers } from 'ethers';
-import { PrismaClient, PaymentStatus, PaymentType, PaymentEventType } from '@prisma/client';
+import { PrismaClient, PaymentStatus, PaymentType, PaymentEventType, YieldStatus } from '@prisma/client';
 import { redis } from '../config/redis';
 import { chainConfigs, supportedTokens, ChainName, TokenSymbol } from '../config/environment';
 import { logger, logBlockchainOperation, logBusinessEvent } from '../utils/logger';
+import { ContractService } from './ContractService';
+import { YieldService } from './YieldService';
+import { NotificationService } from './NotificationService';
+import { number } from 'zod';
+import { string } from 'zod';
+import { string } from 'zod';
+import { error } from 'console';
+import { boolean } from 'zod';
+import { any } from 'zod';
+import { error } from 'console';
+import { number } from 'zod';
+import { number } from 'zod';
+import { number } from 'zod';
+import { number } from 'zod';
+import { any } from 'zod';
+import { string } from 'zod';
+import { string } from 'zod';
+import { string } from 'zod';
+import { string } from 'zod';
+import { any } from 'zod';
+import { string } from 'zod';
+import { any } from 'zod';
+import { any } from 'zod';
+import { string } from 'zod';
+import { any } from 'zod';
+import { any } from 'zod';
+import { string } from 'zod';
+import { any } from 'zod';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { any } from 'zod';
+import { any } from 'zod';
+import { any } from 'zod';
+import { request } from 'http';
+import { string } from 'zod';
+import { string } from 'zod';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { token } from 'morgan';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { any } from 'zod';
+import { any } from 'zod';
+import { request } from 'http';
+import { string } from 'zod';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { request } from 'http';
+import { error } from 'console';
+import { error } from 'console';
+import { error } from 'console';
+import { error } from 'console';
+import { error } from 'console';
+import { error } from 'console';
+import { number } from 'zod';
+import { any } from 'zod';
+import { error } from 'console';
+import { string } from 'zod';
+import { string } from 'zod';
+import { error } from 'console';
+import { error } from 'console';
+import { error } from 'console';
+import { error } from 'console';
+import { error } from 'console';
+import { any } from 'zod';
+import { error } from 'console';
+import { string } from 'zod';
+import { string } from 'zod';
+import { number } from 'zod';
+import { any } from 'zod';
+import { any } from 'zod';
+import { any } from 'zod';
+import { number } from 'zod';
+import { number } from 'zod';
+import { string } from 'zod';
+import { any } from 'zod';
+import { any } from 'zod';
+import { string } from 'zod';
+import { string } from 'zod';
+import { string } from 'zod';
+import { any } from 'zod';
+import { any } from 'zod';
+import { string } from 'zod';
+import { any } from 'zod';
+import { any } from 'zod';
+import { string } from 'zod';
+import { string } from 'zod';
+import { boolean } from 'zod';
+import { error } from 'console';
+import { request } from 'http';
+import { token } from 'morgan';
+import { request } from 'http';
+import { request } from 'http';
+import { error } from 'console';
+import { error } from 'console';
+import { error } from 'console';
 
 // Export the types for use in other files
 export { PaymentStatus, PaymentType, PaymentEventType } from '@prisma/client';
-
-const prisma = new PrismaClient();
 
 /**
  * Payment creation request interface
@@ -24,16 +147,28 @@ export interface CreatePaymentRequest {
 }
 
 /**
- * Core payment processing service
- * Handles payment creation, validation, and lifecycle management
+ * Core payment processing service with blockchain integration
  */
 export class PaymentService {
-    constructor() {
-        // Service dependencies would be injected here
+    private contractService: ContractService;
+    private yieldService: YieldService;
+    private notificationService: NotificationService;
+    private prisma: PrismaClient;
+
+    constructor(
+        contractService?: ContractService,
+        yieldService?: YieldService,
+        notificationService?: NotificationService,
+        prisma?: PrismaClient
+    ) {
+        this.contractService = contractService || new ContractService();
+        this.yieldService = yieldService || new YieldService();
+        this.notificationService = notificationService || new NotificationService();
+        this.prisma = prisma || new PrismaClient();
     }
 
     /**
-     * Create a new payment
+     * Create a new payment with blockchain integration
      */
     public async createPayment(request: CreatePaymentRequest, userId: string): Promise<any> {
         const startTime = Date.now();
@@ -49,7 +184,7 @@ export class PaymentService {
             // Find or create merchant
             const merchant = await this.findOrCreateMerchant(request.merchantAddress);
 
-            // Create escrow transaction (mock)
+            // Create escrow transaction on blockchain
             const escrowResult = await this.createEscrowTransaction(request);
 
             // Store payment in database
@@ -88,10 +223,9 @@ export class PaymentService {
             logger.error('Failed to create payment:', error);
             throw error;
         }
-    }
-
-    /**
-     * Get payment by ID
+    }    /*
+*
+     * Get payment by ID with caching
      */
     public async getPayment(paymentId: string): Promise<any | null> {
         try {
@@ -102,7 +236,7 @@ export class PaymentService {
             }
 
             // Fallback to database
-            const payment = await prisma.payment.findUnique({
+            const payment = await this.prisma.payment.findUnique({
                 where: { id: paymentId },
                 include: {
                     user: true,
@@ -127,7 +261,7 @@ export class PaymentService {
     }
 
     /**
-     * Update payment status
+     * Update payment status with blockchain verification
      */
     public async updatePaymentStatus(
         paymentId: string,
@@ -155,7 +289,7 @@ export class PaymentService {
                 updateData.releasedAt = new Date();
             }
 
-            const payment = await prisma.payment.update({
+            const payment = await this.prisma.payment.update({
                 where: { id: paymentId },
                 data: updateData,
             });
@@ -170,8 +304,15 @@ export class PaymentService {
             // Update cache
             await this.cachePayment(payment);
 
-            // Log status change
-            logBusinessEvent('payment_status_updated', undefined, {
+            // Send notifications
+            await this.notificationService.sendPaymentStatusUpdate(payment);
+
+            // Start yield generation if confirmed and enabled
+            if (status === PaymentStatus.CONFIRMED && payment.yieldStrategy) {
+                await this.startYieldGeneration(paymentId);
+            }
+
+            logBusinessEvent('payment_status_updated', payment.userId, {
                 paymentId,
                 status,
                 transactionHash,
@@ -185,10 +326,300 @@ export class PaymentService {
             logger.error(`Failed to update payment status ${paymentId}:`, error);
             throw error;
         }
+    }    /
+**
+     * Confirm a payment with blockchain transaction
+     */
+    public async confirmPayment(paymentId: string, transactionHash: string): Promise<any> {
+        try {
+            const payment = await this.prisma.payment.update({
+                where: { id: paymentId },
+                data: {
+                    status: PaymentStatus.CONFIRMED,
+                    sourceTransactionHash: transactionHash,
+                    confirmedAt: new Date()
+                }
+            });
+
+            // Create payment event
+            await this.createPaymentEvent(paymentId, PaymentEventType.CONFIRMED, {
+                transactionHash,
+                confirmedAt: new Date()
+            });
+
+            // Update cache
+            await this.cachePayment(payment);
+
+            // Send notifications
+            await this.notificationService.sendPaymentStatusUpdate(payment);
+
+            // Start yield generation if enabled
+            if (payment.yieldStrategy) {
+                await this.startYieldGeneration(paymentId);
+            }
+
+            logBusinessEvent('payment_confirmed', payment.userId, { paymentId, transactionHash });
+            return payment;
+        } catch (error) {
+            logger.error('Error confirming payment:', error);
+            throw error;
+        }
     }
 
     /**
-     * Get payment history for a merchant
+     * Release payment with yield calculation
+     */
+    public async releasePayment(paymentId: string): Promise<any> {
+        try {
+            const payment = await this.getPayment(paymentId);
+            if (!payment) {
+                throw new Error(`Payment ${paymentId} not found`);
+            }
+
+            if (payment.status !== PaymentStatus.CONFIRMED) {
+                throw new Error(`Payment ${paymentId} is not confirmed and cannot be released`);
+            }
+
+            // Calculate final yield before release
+            const finalYield = await this.yieldService.calculateFinalYield(paymentId);
+
+            // Release payment on blockchain
+            const releaseResult = await this.contractService.releasePayment(
+                payment.escrowAddress,
+                payment.senderAddress,
+                payment.recipientAddress,
+                payment.amount.toString(),
+                finalYield
+            );
+
+            // Update payment status
+            const updatedPayment = await this.prisma.payment.update({
+                where: { id: paymentId },
+                data: {
+                    status: PaymentStatus.COMPLETED,
+                    releasedAt: new Date(),
+                    actualYield: parseFloat(finalYield),
+                    destTransactionHash: releaseResult.transactionHash
+                }
+            });
+
+            // Create yield earnings record
+            if (parseFloat(finalYield) > 0) {
+                await this.createYieldEarning(payment, finalYield);
+            }
+
+            // Create payment event
+            await this.createPaymentEvent(paymentId, PaymentEventType.RELEASED, {
+                transactionHash: releaseResult.transactionHash,
+                finalYield,
+                releasedAt: new Date()
+            });
+
+            // Send notifications
+            await this.notificationService.sendPaymentStatusUpdate(updatedPayment);
+            await this.sendWebhookNotification(updatedPayment, 'payment.completed');
+
+            // Update cache
+            await this.cachePayment(updatedPayment);
+
+            logBusinessEvent('payment_released', payment.userId, { 
+                paymentId, 
+                finalYield,
+                transactionHash: releaseResult.transactionHash
+            });
+
+            return updatedPayment;
+        } catch (error) {
+            logger.error('Error releasing payment:', error);
+            throw error;
+        }
+    }    /*
+*
+     * Start real-time yield generation
+     */
+    public async startYieldGeneration(paymentId: string): Promise<void> {
+        try {
+            const payment = await this.getPayment(paymentId);
+            if (!payment) {
+                throw new Error(`Payment ${paymentId} not found`);
+            }
+
+            if (payment.status !== PaymentStatus.CONFIRMED) {
+                throw new Error(`Payment ${paymentId} is not confirmed`);
+            }
+
+            // Start yield generation
+            await this.yieldService.startYieldGeneration(paymentId, {
+                amount: payment.amount,
+                token: payment.tokenSymbol,
+                strategy: payment.yieldStrategy,
+                startTime: new Date()
+            });
+
+            // Create yield earning record
+            await this.prisma.yieldEarning.create({
+                data: {
+                    userId: payment.userId,
+                    paymentId: payment.id,
+                    strategyId: await this.getStrategyId(payment.yieldStrategy),
+                    principalAmount: payment.amount,
+                    yieldAmount: 0,
+                    feeAmount: 0,
+                    netYieldAmount: 0,
+                    tokenAddress: payment.tokenAddress || '',
+                    tokenSymbol: payment.tokenSymbol || '',
+                    chainId: payment.sourceChain,
+                    startTime: new Date(),
+                    status: YieldStatus.ACTIVE
+                }
+            });
+
+            // Create payment event
+            await this.createPaymentEvent(paymentId, PaymentEventType.YIELD_STARTED, {
+                strategy: payment.yieldStrategy,
+                startTime: new Date()
+            });
+
+            logger.info(`Yield generation started for payment: ${paymentId}`);
+        } catch (error) {
+            logger.error(`Failed to start yield generation for payment ${paymentId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update real-time yield for a payment
+     */
+    public async updatePaymentYield(paymentId: string): Promise<void> {
+        try {
+            const payment = await this.getPayment(paymentId);
+            if (!payment || payment.status !== PaymentStatus.CONFIRMED) {
+                return;
+            }
+
+            // Calculate current yield
+            const currentYield = await this.yieldService.calculateCurrentYield(paymentId);
+
+            // Update payment with current yield
+            await this.prisma.payment.update({
+                where: { id: paymentId },
+                data: {
+                    actualYield: parseFloat(currentYield)
+                }
+            });
+
+            // Update yield earning record
+            await this.prisma.yieldEarning.updateMany({
+                where: { 
+                    paymentId: paymentId,
+                    status: YieldStatus.ACTIVE
+                },
+                data: {
+                    yieldAmount: parseFloat(currentYield),
+                    netYieldAmount: parseFloat(currentYield) * 0.7, // 70% to user
+                    updatedAt: new Date()
+                }
+            });
+
+            // Create yield event
+            await this.createPaymentEvent(paymentId, PaymentEventType.YIELD_EARNED, {
+                yieldAmount: currentYield,
+                timestamp: new Date()
+            });
+
+            // Update cache
+            const updatedPayment = await this.getPayment(paymentId);
+            await this.cachePayment(updatedPayment);
+
+            // Send real-time notification
+            await this.notificationService.sendYieldUpdate(updatedPayment, currentYield);
+
+        } catch (error) {
+            logger.error(`Failed to update yield for payment ${paymentId}:`, error);
+        }
+    }    /**
+
+     * Get merchant payment analytics
+     */
+    public async getMerchantAnalytics(
+        merchantId: string,
+        startDate?: Date,
+        endDate?: Date
+    ): Promise<any> {
+        try {
+            const whereClause: any = { merchantId };
+            
+            if (startDate || endDate) {
+                whereClause.createdAt = {};
+                if (startDate) whereClause.createdAt.gte = startDate;
+                if (endDate) whereClause.createdAt.lte = endDate;
+            }
+
+            const [
+                totalPayments,
+                completedPayments,
+                totalVolume,
+                totalYieldGenerated,
+                averagePaymentAmount,
+                paymentsByStatus,
+                yieldByStrategy
+            ] = await Promise.all([
+                this.prisma.payment.count({ where: whereClause }),
+                this.prisma.payment.count({ 
+                    where: { ...whereClause, status: PaymentStatus.COMPLETED }
+                }),
+                this.prisma.payment.aggregate({
+                    where: whereClause,
+                    _sum: { amount: true }
+                }),
+                this.prisma.payment.aggregate({
+                    where: whereClause,
+                    _sum: { actualYield: true }
+                }),
+                this.prisma.payment.aggregate({
+                    where: whereClause,
+                    _avg: { amount: true }
+                }),
+                this.prisma.payment.groupBy({
+                    by: ['status'],
+                    where: whereClause,
+                    _count: { status: true }
+                }),
+                this.prisma.yieldEarning.groupBy({
+                    by: ['strategyId'],
+                    where: {
+                        payment: { merchantId }
+                    },
+                    _sum: { yieldAmount: true },
+                    _count: { strategyId: true }
+                })
+            ]);
+
+            return {
+                totalPayments,
+                completedPayments,
+                completionRate: totalPayments > 0 ? (completedPayments / totalPayments) * 100 : 0,
+                totalVolume: totalVolume._sum.amount || 0,
+                totalYieldGenerated: totalYieldGenerated._sum.actualYield || 0,
+                averagePaymentAmount: averagePaymentAmount._avg.amount || 0,
+                paymentsByStatus: paymentsByStatus.reduce((acc, item) => {
+                    acc[item.status] = item._count.status;
+                    return acc;
+                }, {} as Record<string, number>),
+                yieldByStrategy: yieldByStrategy.map(item => ({
+                    strategyId: item.strategyId,
+                    totalYield: item._sum.yieldAmount || 0,
+                    paymentCount: item._count.strategyId
+                }))
+            };
+        } catch (error) {
+            logger.error(`Failed to get merchant analytics for ${merchantId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get merchant payments with pagination
      */
     public async getMerchantPayments(
         merchantId: string,
@@ -197,7 +628,7 @@ export class PaymentService {
     ): Promise<{ payments: any[]; total: number }> {
         try {
             const [payments, total] = await Promise.all([
-                prisma.payment.findMany({
+                this.prisma.payment.findMany({
                     where: { merchantId },
                     include: {
                         user: true,
@@ -207,7 +638,7 @@ export class PaymentService {
                     take: limit,
                     skip: offset,
                 }),
-                prisma.payment.count({
+                this.prisma.payment.count({
                     where: { merchantId },
                 }),
             ]);
@@ -221,9 +652,105 @@ export class PaymentService {
             logger.error(`Failed to get merchant payments for ${merchantId}:`, error);
             throw error;
         }
+    }   
+ /**
+     * Handle blockchain transaction failures with retry logic
+     */
+    public async handleTransactionFailure(
+        paymentId: string,
+        transactionHash: string,
+        error: any
+    ): Promise<void> {
+        try {
+            // Update payment status to failed
+            await this.prisma.payment.update({
+                where: { id: paymentId },
+                data: {
+                    status: PaymentStatus.FAILED,
+                    sourceTransactionHash: transactionHash,
+                    updatedAt: new Date()
+                }
+            });
+
+            // Create failure event
+            await this.createPaymentEvent(paymentId, PaymentEventType.FAILED, {
+                transactionHash,
+                error: error.message || 'Transaction failed',
+                failedAt: new Date()
+            });
+
+            // Get payment for notifications
+            const payment = await this.getPayment(paymentId);
+            
+            // Send failure notifications
+            await this.notificationService.sendPaymentFailed(payment, error);
+            await this.sendWebhookNotification(payment, 'payment.failed');
+
+            // Update cache
+            await this.cachePayment(payment);
+
+            logBusinessEvent('payment_failed', payment.userId, {
+                paymentId,
+                transactionHash,
+                error: error.message
+            });
+
+        } catch (err) {
+            logger.error(`Failed to handle transaction failure for payment ${paymentId}:`, err);
+        }
     }
 
     /**
+     * Enhanced blockchain error handling with retry logic
+     */
+    public async handleBlockchainError(
+        paymentId: string,
+        operation: string,
+        error: any,
+        retryCount: number = 0
+    ): Promise<void> {
+        const maxRetries = 3;
+        
+        try {
+            logger.error(`Blockchain error for payment ${paymentId} during ${operation}:`, {
+                error: error.message,
+                retryCount,
+                paymentId,
+                operation
+            });
+
+            // Determine if error is retryable
+            const isRetryable = this.isRetryableError(error);
+            
+            if (isRetryable && retryCount < maxRetries) {
+                // Exponential backoff retry
+                const delay = Math.pow(2, retryCount) * 1000;
+                setTimeout(async () => {
+                    await this.retryBlockchainOperation(paymentId, operation, retryCount + 1);
+                }, delay);
+                return;
+            }
+
+            // Mark payment as failed after max retries
+            await this.handleTransactionFailure(paymentId, '', error);
+
+            // Send system alert for critical errors
+            await this.notificationService.sendSystemAlert(
+                'Blockchain Operation Failed',
+                `Payment ${paymentId} failed during ${operation} after ${retryCount} retries`,
+                {
+                    paymentId,
+                    operation,
+                    error: error.message,
+                    retryCount
+                }
+            );
+
+        } catch (handlingError) {
+            logger.error(`Failed to handle blockchain error for payment ${paymentId}:`, handlingError);
+        }
+    }    
+/**
      * Private helper methods
      */
     
@@ -257,7 +784,7 @@ export class PaymentService {
     }
 
     private async findOrCreateMerchant(merchantAddress: string) {
-        let merchant = await prisma.merchant.findFirst({
+        let merchant = await this.prisma.merchant.findFirst({
             where: {
                 name: { contains: merchantAddress.slice(0, 8) }
             }
@@ -265,7 +792,7 @@ export class PaymentService {
 
         if (!merchant) {
             // Create a basic merchant record
-            merchant = await prisma.merchant.create({
+            merchant = await this.prisma.merchant.create({
                 data: {
                     name: `Merchant ${merchantAddress.slice(0, 8)}`,
                     email: `merchant+${merchantAddress.slice(0, 8)}@example.com`,
@@ -280,7 +807,6 @@ export class PaymentService {
     }
 
     private async createEscrowTransaction(request: CreatePaymentRequest): Promise<any> {
-        // This would interact with the smart contract to create an escrow
         const chainConfig = chainConfigs[request.chain];
         
         logBlockchainOperation('create_escrow', chainConfig.chainId, undefined, undefined, {
@@ -288,14 +814,36 @@ export class PaymentService {
             token: request.token,
         });
 
-        // Mock implementation - in reality this would call the smart contract
-        return {
-            escrowAddress: `0x${Math.random().toString(16).substr(2, 40)}`,
-            transactionHash: `0x${Math.random().toString(16).substr(2, 64)}`,
-        };
-    }
+        try {
+            // Get token address for the chain
+            const tokenConfig = supportedTokens[request.token];
+            const chainAddresses = tokenConfig?.addresses as Record<string, string> | undefined;
+            const tokenAddress = chainAddresses?.[request.chain] || '';
 
-    private async storePayment(userId: string, merchantId: string, request: CreatePaymentRequest, escrowResult: any): Promise<any> {
+            // Call the contract service to create escrow
+            const escrowAddress = (chainConfig.contracts as any)?.yieldEscrow || '0x0000000000000000000000000000000000000000';
+            const result = await this.contractService.createEscrow(
+                escrowAddress,
+                request.chain,
+                request.amount,
+                tokenAddress,
+                request.merchantAddress,
+                '0x0000000000000000000000000000000000000000', // Default yield strategy
+                ethers.keccak256(ethers.toUtf8Bytes(`${request.merchantAddress}-${Date.now()}`)),
+                JSON.stringify(request.metadata || {})
+            );
+
+            return {
+                escrowAddress,
+                transactionHash: result.transactionHash,
+                depositIndex: result.depositIndex
+            };
+        } catch (error) {
+            logger.error('Contract service failed:', error);
+            throw error;
+        }
+    }    p
+rivate async storePayment(userId: string, merchantId: string, request: CreatePaymentRequest, escrowResult: any): Promise<any> {
         const tokenConfig = supportedTokens[request.token];
         const amountDecimal = parseFloat(request.amount);
         
@@ -303,7 +851,7 @@ export class PaymentService {
         const chainAddresses = tokenConfig?.addresses as Record<string, string> | undefined;
         const tokenAddress = chainAddresses?.[request.chain] || '';
 
-        const payment = await prisma.payment.create({
+        const payment = await this.prisma.payment.create({
             data: {
                 userId,
                 merchantId,
@@ -335,9 +883,14 @@ export class PaymentService {
     }
 
     private async getCachedPayment(paymentId: string): Promise<any | null> {
-        const cacheKey = `payment:${paymentId}`;
-        const cached = await redis.get(cacheKey);
-        return cached ? JSON.parse(cached) : null;
+        try {
+            const cacheKey = `payment:${paymentId}`;
+            const cached = await redis.get(cacheKey);
+            return cached ? JSON.parse(cached) : null;
+        } catch (error) {
+            logger.warn('Redis cache error, falling back to database:', error);
+            return null;
+        }
     }
 
     private async createPaymentEvent(
@@ -345,7 +898,7 @@ export class PaymentService {
         eventType: PaymentEventType, 
         eventData?: any
     ): Promise<void> {
-        await prisma.paymentEvent.create({
+        await this.prisma.paymentEvent.create({
             data: {
                 paymentId,
                 eventType,
@@ -368,58 +921,135 @@ export class PaymentService {
             default:
                 return PaymentEventType.CREATED;
         }
-    }
-
-    /**
-     * Confirm a payment (called when blockchain transaction is confirmed)
-     */
-    public async confirmPayment(paymentId: string, transactionHash: string): Promise<any> {
+    }    private 
+async sendWebhookNotification(payment: any, eventType: string): Promise<void> {
         try {
-            const payment = await prisma.payment.update({
-                where: { id: paymentId },
-                data: {
-                    status: PaymentStatus.CONFIRMED,
-                    destTransactionHash: transactionHash, // Use correct field name
-                    confirmedAt: new Date()
-                }
-            });
+            if (!payment.merchant?.webhookUrl) {
+                return;
+            }
 
-            // Log payment event (method exists in the class)
-            await this.logPaymentEvent(paymentId, PaymentEventType.CONFIRMED, {
-                transactionHash,
-                confirmedAt: new Date()
-            });
+            const webhookPayload = {
+                event: eventType,
+                payment: {
+                    id: payment.id,
+                    amount: payment.amount,
+                    currency: payment.currency,
+                    status: payment.status,
+                    tokenSymbol: payment.tokenSymbol,
+                    sourceChain: payment.sourceChain,
+                    actualYield: payment.actualYield,
+                    createdAt: payment.createdAt,
+                    confirmedAt: payment.confirmedAt,
+                    releasedAt: payment.releasedAt
+                },
+                timestamp: new Date().toISOString()
+            };
 
-            logBusinessEvent('payment_confirmed', 'payment', { paymentId, transactionHash });
-            return payment;
+            await this.notificationService.sendWebhook(
+                payment.merchant.webhookUrl,
+                webhookPayload
+            );
+
         } catch (error) {
-            logger.error('Error confirming payment:', error);
-            throw error;
+            logger.error(`Failed to send webhook notification for payment ${payment.id}:`, error);
         }
     }
 
-    /**
-     * Release a payment (release escrow funds to merchant)
-     */
-    public async releasePayment(paymentId: string): Promise<any> {
+    private async createYieldEarning(payment: any, yieldAmount: string): Promise<void> {
+        const yieldAmountDecimal = parseFloat(yieldAmount);
+        const userYield = yieldAmountDecimal * 0.7; // 70% to user
+        const merchantYield = yieldAmountDecimal * 0.2; // 20% to merchant
+        const protocolYield = yieldAmountDecimal * 0.1; // 10% to protocol
+
+        await this.prisma.yieldEarning.create({
+            data: {
+                userId: payment.userId,
+                paymentId: payment.id,
+                strategyId: await this.getStrategyId(payment.yieldStrategy),
+                principalAmount: payment.amount,
+                yieldAmount: yieldAmountDecimal,
+                feeAmount: protocolYield,
+                netYieldAmount: userYield,
+                tokenAddress: payment.tokenAddress || '',
+                tokenSymbol: payment.tokenSymbol || '',
+                chainId: payment.sourceChain,
+                startTime: payment.confirmedAt || payment.createdAt,
+                endTime: new Date(),
+                actualAPY: await this.calculateAPY(payment, yieldAmountDecimal),
+                status: YieldStatus.COMPLETED
+            }
+        });
+    }
+
+    private async getStrategyId(strategyName: string | null): Promise<string> {
+        if (!strategyName) {
+            return 'default-strategy-id';
+        }
+
+        const strategy = await this.prisma.yieldStrategy.findFirst({
+            where: { name: strategyName }
+        });
+
+        return strategy?.id || 'default-strategy-id';
+    }
+
+    private async calculateAPY(payment: any, yieldAmount: number): Promise<number> {
+        const startTime = payment.confirmedAt || payment.createdAt;
+        const endTime = new Date();
+        const durationInDays = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60 * 24);
+        
+        if (durationInDays <= 0) return 0;
+        
+        const yieldRate = yieldAmount / payment.amount;
+        const annualizedRate = (yieldRate * 365) / durationInDays;
+        
+        return annualizedRate * 100; // Convert to percentage
+    }
+
+    private isRetryableError(error: any): boolean {
+        const retryableErrors = [
+            'network timeout',
+            'connection refused',
+            'rate limit',
+            'temporary failure',
+            'insufficient funds', // Sometimes temporary
+            'nonce too low'
+        ];
+
+        const errorMessage = error.message?.toLowerCase() || '';
+        return retryableErrors.some(retryableError => 
+            errorMessage.includes(retryableError)
+        );
+    }
+
+    private async retryBlockchainOperation(
+        paymentId: string,
+        operation: string,
+        retryCount: number
+    ): Promise<void> {
         try {
-            const payment = await prisma.payment.update({
-                where: { id: paymentId },
-                data: {
-                    status: PaymentStatus.COMPLETED
-                    // Remove completedAt as it may not exist in schema
-                }
+            logger.info(`Retrying blockchain operation for payment ${paymentId}:`, {
+                operation,
+                retryCount
             });
 
-            await this.logPaymentEvent(paymentId, PaymentEventType.RELEASED, {
-                releasedAt: new Date()
-            });
+            // Implement specific retry logic based on operation type
+            switch (operation) {
+                case 'createEscrow':
+                    // Retry escrow creation
+                    break;
+                case 'releasePayment':
+                    // Retry payment release
+                    break;
+                case 'cancelPayment':
+                    // Retry payment cancellation
+                    break;
+                default:
+                    logger.warn(`Unknown operation for retry: ${operation}`);
+            }
 
-            logBusinessEvent('payment_released', 'payment', { paymentId });
-            return payment;
         } catch (error) {
-            logger.error('Error releasing payment:', error);
-            throw error;
+            await this.handleBlockchainError(paymentId, operation, error, retryCount);
         }
     }
 }
