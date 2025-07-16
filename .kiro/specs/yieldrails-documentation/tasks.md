@@ -149,7 +149,7 @@ The plan prioritizes core functionality first, implements comprehensive testing 
   - Write initial component tests and setup testing infrastructure
   - _Requirements: 7.1, 7.2, 7.7_
 
-- [ ] 17. Build core payment interface components
+- [x] 17. Build core payment interface components
   - Create payment creation form with real-time validation and yield estimation
   - Implement payment status display with live updates via WebSocket
   - Add payment history table with filtering and pagination
@@ -176,7 +176,7 @@ The plan prioritizes core functionality first, implements comprehensive testing 
   - Write tests for all notification channels and delivery mechanisms
   - _Requirements: 4.7, 7.6_
 
-- [ ] 20. Create basic TypeScript SDK for API integration
+- [x] 20. Create basic TypeScript SDK for API integration
   - Implement core SDK with payment creation and management
   - Add authentication helpers and session management
   - Create type-safe API client with proper error handling

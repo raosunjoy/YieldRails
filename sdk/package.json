@@ -10,7 +10,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "rollup -c rollup.config.js",
+    "build": "rollup -c rollup.config.js --bundleConfigAsCjs",
     "build:watch": "rollup -c rollup.config.js -w",
     "dev": "npm run build:watch",
     "test": "jest",
@@ -69,24 +69,6 @@
     "tslib": "^2.6.1",
     "typedoc": "^0.24.8",
     "typescript": "^5.1.6"
-  },
-  "jest": {
-    "preset": "ts-jest",
-    "testEnvironment": "node",
-    "testMatch": ["**/__tests__/**/*.ts", "**/*.test.ts"],
-    "collectCoverageFrom": [
-      "src/**/*.ts",
-      "!src/**/*.d.ts",
-      "!src/index.ts"
-    ],
-    "coverageThreshold": {
-      "global": {
-        "branches": 100,
-        "functions": 100,
-        "lines": 100,
-        "statements": 100
-      }
-    }
   },
   "bundlesize": [
     {

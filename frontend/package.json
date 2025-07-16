@@ -74,32 +74,6 @@
     "storybook": "^7.1.1",
     "typescript": "^5.1.6"
   },
-  "jest": {
-    "testEnvironment": "jsdom",
-    "setupFilesAfterEnv": ["<rootDir>/test/setup.ts"],
-    "testMatch": [
-      "**/__tests__/**/*.(ts|tsx|js)",
-      "**/*.(test|spec).(ts|tsx|js)"
-    ],
-    "moduleNameMapping": {
-      "^@/(.*)$": "<rootDir>/src/$1"
-    },
-    "collectCoverageFrom": [
-      "src/**/*.{ts,tsx}",
-      "!src/**/*.d.ts",
-      "!src/**/*.stories.{ts,tsx}",
-      "!src/pages/_app.tsx",
-      "!src/pages/_document.tsx"
-    ],
-    "coverageThreshold": {
-      "global": {
-        "branches": 90,
-        "functions": 90,
-        "lines": 90,
-        "statements": 90
-      }
-    }
-  },
   "engines": {
     "node": ">=18.0.0"
   }
