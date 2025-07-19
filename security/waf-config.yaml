@@ -1,0 +1,535 @@
+# YieldRails Web Application Firewall Configuration
+# Compatible with AWS WAF, Cloudflare, and NGINX ModSecurity
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waf-config
+  namespace: yieldrails-prod
+data:
+  # Core WAF Rules Configuration
+  core-rules.conf: |
+    # YieldRails Core WAF Rules
+    # Based on OWASP Core Rule Set v4.0
+    
+    # =================================
+    # REQUEST FILTERING RULES
+    # =================================
+    
+    # Block common attack patterns
+    SecRule REQUEST_HEADERS:User-Agent "@detectXSS" \
+        "id:1001,\
+        phase:1,\
+        block,\
+        msg:'XSS Attack in User-Agent',\
+        logdata:'User-Agent: %{REQUEST_HEADERS.User-Agent}',\
+        tag:'attack-xss',\
+        severity:'CRITICAL'"
+    
+    # SQL Injection Protection
+    SecRule ARGS "@detectSQLi" \
+        "id:1002,\
+        phase:2,\
+        block,\
+        msg:'SQL Injection Attack Detected',\
+        logdata:'Matched Data: %{MATCHED_VAR} found within %{MATCHED_VAR_NAME}',\
+        tag:'attack-sqli',\
+        severity:'CRITICAL'"
+    
+    # Command Injection Protection
+    SecRule ARGS "@pmFromFile /etc/modsecurity/rules/command-injection-patterns.txt" \
+        "id:1003,\
+        phase:2,\
+        block,\
+        msg:'Command Injection Attack Detected',\
+        tag:'attack-injection-cmd',\
+        severity:'CRITICAL'"
+    
+    # Path Traversal Protection
+    SecRule REQUEST_URI "@detectLFI" \
+        "id:1004,\
+        phase:1,\
+        block,\
+        msg:'Path Traversal Attack Detected',\
+        tag:'attack-lfi',\
+        severity:'HIGH'"
+    
+    # =================================
+    # RATE LIMITING RULES
+    # =================================
+    
+    # API Rate Limiting (100 requests per minute per IP)
+    SecRule IP:bf_counter "@gt 100" \
+        "id:2001,\
+        phase:1,\
+        block,\
+        msg:'Rate Limit Exceeded - API',\
+        expirevar:IP.bf_counter=60,\
+        tag:'rate-limit',\
+        severity:'WARNING'"
+    
+    SecAction \
+        "id:2002,\
+        phase:1,\
+        nolog,\
+        pass,\
+        initcol:IP=%{REMOTE_ADDR},\
+        setvar:IP.bf_counter=+1,\
+        expirevar:IP.bf_counter=60"
+    
+    # Authentication Rate Limiting (5 failed attempts per 5 minutes)
+    SecRule REQUEST_URI "@beginsWith /api/auth/login" \
+        "id:2003,\
+        phase:1,\
+        pass,\
+        nolog,\
+        initcol:IP=%{REMOTE_ADDR}"
+    
+    SecRule RESPONSE_STATUS "@streq 401" \
+        "id:2004,\
+        phase:5,\
+        pass,\
+        nolog,\
+        setvar:IP.login_failed=+1,\
+        expirevar:IP.login_failed=300"
+    
+    SecRule IP:login_failed "@gt 5" \
+        "id:2005,\
+        phase:1,\
+        block,\
+        msg:'Authentication Rate Limit Exceeded',\
+        tag:'brute-force',\
+        severity:'WARNING'"
+    
+    # =================================
+    # BLOCKCHAIN-SPECIFIC PROTECTION
+    # =================================
+    
+    # Ethereum Address Validation
+    SecRule ARGS:address "!@rx ^0x[a-fA-F0-9]{40}$" \
+        "id:3001,\
+        phase:2,\
+        block,\
+        msg:'Invalid Ethereum Address Format',\
+        tag:'blockchain-validation',\
+        severity:'HIGH',\
+        t:none"
+    
+    # Transaction Hash Validation
+    SecRule ARGS:txHash "!@rx ^0x[a-fA-F0-9]{64}$" \
+        "id:3002,\
+        phase:2,\
+        block,\
+        msg:'Invalid Transaction Hash Format',\
+        tag:'blockchain-validation',\
+        severity:'HIGH',\
+        t:none"
+    
+    # Large Number Validation for Wei amounts
+    SecRule ARGS:amount "@rx ^\d{1,78}$" \
+        "id:3003,\
+        phase:2,\
+        pass,\
+        nolog,\
+        t:none"
+    
+    SecRule ARGS:amount "!@rx ^\d{1,78}$" \
+        "id:3004,\
+        phase:2,\
+        block,\
+        msg:'Invalid Amount Format',\
+        tag:'blockchain-validation',\
+        severity:'HIGH'"
+    
+    # =================================
+    # DeFi SPECIFIC PROTECTION
+    # =================================
+    
+    # MEV Bot Detection
+    SecRule REQUEST_HEADERS:User-Agent "@pmFromFile /etc/modsecurity/rules/mev-bot-patterns.txt" \
+        "id:4001,\
+        phase:1,\
+        block,\
+        msg:'MEV Bot Activity Detected',\
+        tag:'defi-security',\
+        severity:'HIGH'"
+    
+    # Flash Loan Attack Pattern Detection
+    SecRule ARGS:strategy "@pmFromFile /etc/modsecurity/rules/flash-loan-patterns.txt" \
+        "id:4002,\
+        phase:2,\
+        block,\
+        msg:'Potential Flash Loan Attack',\
+        tag:'defi-security',\
+        severity:'CRITICAL'"
+    
+    # Sandwich Attack Detection
+    SecRule REQUEST_BODY "@contains frontrun" \
+        "id:4003,\
+        phase:2,\
+        block,\
+        msg:'Potential Sandwich Attack',\
+        tag:'defi-security',\
+        severity:'HIGH'"
+    
+    # =================================
+    # COMPLIANCE AND AML RULES
+    # =================================
+    
+    # Sanctions List IP Blocking
+    SecRule REMOTE_ADDR "@ipMatchFromFile /etc/modsecurity/rules/sanctions-ips.txt" \
+        "id:5001,\
+        phase:1,\
+        block,\
+        msg:'Access from Sanctioned IP Address',\
+        tag:'aml-compliance',\
+        severity:'CRITICAL'"
+    
+    # High-Risk Country Blocking
+    SecRule GEO:COUNTRY_CODE "@pmFromFile /etc/modsecurity/rules/high-risk-countries.txt" \
+        "id:5002,\
+        phase:1,\
+        block,\
+        msg:'Access from High-Risk Country',\
+        tag:'aml-compliance',\
+        severity:'HIGH'"
+    
+    # =================================
+    # CUSTOM YIELDRAILS RULES
+    # =================================
+    
+    # Admin Panel Protection
+    SecRule REQUEST_URI "@beginsWith /admin" \
+        "id:6001,\
+        phase:1,\
+        pass,\
+        log,\
+        msg:'Admin Panel Access Attempt',\
+        tag:'admin-access'"
+    
+    # API Key Validation
+    SecRule REQUEST_HEADERS:Authorization "!@rx ^Bearer [A-Za-z0-9_-]{32,}$" \
+        "id:6002,\
+        phase:1,\
+        block,\
+        msg:'Invalid API Key Format',\
+        tag:'authentication',\
+        severity:'HIGH'"
+    
+    # Cross-Chain Bridge Protection
+    SecRule REQUEST_URI "@contains /api/bridge" \
+        "id:6003,\
+        phase:1,\
+        pass,\
+        log,\
+        msg:'Cross-Chain Bridge Access',\
+        tag:'bridge-monitoring'"
+    
+    # Large Transaction Monitoring
+    SecRule ARGS:amount "@gt 1000000000000000000000" \
+        "id:6004,\
+        phase:2,\
+        pass,\
+        log,\
+        msg:'Large Transaction Amount Detected',\
+        tag:'transaction-monitoring',\
+        logdata:'Amount: %{MATCHED_VAR}'"
+
+  # Pattern Files Referenced in Rules
+  command-injection-patterns.txt: |
+    ; /bin/
+    ; /usr/bin/
+    ; curl
+    ; wget
+    ; bash
+    ; sh
+    ; cmd
+    ; powershell
+    ; eval
+    ; exec
+    ; system
+    ; passthru
+
+  mev-bot-patterns.txt: |
+    flashbots
+    mev-bot
+    arbitrage-bot
+    sandwich-bot
+    frontrun
+    backrun
+    python-requests
+    go-http-client
+
+  flash-loan-patterns.txt: |
+    flashloan
+    flash_loan
+    aave.flashLoan
+    compound.flashLoan
+    balancer.flashLoan
+    uniswap.flash
+
+  sanctions-ips.txt: |
+    # This would contain actual OFAC sanctioned IP ranges
+    # Example format:
+    # 192.168.1.0/24
+    # 10.0.0.0/8
+
+  high-risk-countries.txt: |
+    # ISO country codes for high-risk jurisdictions
+    # Based on FATF and regulatory guidance
+    AF
+    BY
+    MM
+    CN
+    CU
+    IR
+    KP
+    PK
+    RU
+    SY
+    UG
+    VU
+    YE
+
+  # ModSecurity Main Configuration
+  modsecurity.conf: |
+    # YieldRails ModSecurity Configuration
+    
+    # Enable ModSecurity
+    SecRuleEngine On
+    
+    # Request Body Handling
+    SecRequestBodyAccess On
+    SecRequestBodyLimit 13107200
+    SecRequestBodyNoFilesLimit 131072
+    SecRequestBodyInMemoryLimit 131072
+    SecRequestBodyLimitAction Reject
+    
+    # Response Body Handling
+    SecResponseBodyAccess On
+    SecResponseBodyMimeType text/plain text/html text/xml application/json
+    SecResponseBodyLimit 524288
+    SecResponseBodyLimitAction ProcessPartial
+    
+    # File Upload Handling
+    SecTmpDir /tmp/
+    SecDataDir /tmp/
+    SecUploadDir /tmp/
+    SecUploadFileMode 0600
+    SecUploadFileLimit 100
+    SecUploadKeepFiles RelevantOnly
+    
+    # Debug and Audit Logging
+    SecDebugLog /var/log/modsec_debug.log
+    SecDebugLogLevel 0
+    SecAuditEngine RelevantOnly
+    SecAuditLogRelevantStatus "^(?:5|4(?!04))"
+    SecAuditLogParts ABIJDEFHZ
+    SecAuditLogType Serial
+    SecAuditLog /var/log/modsec_audit.log
+    
+    # Argument Separator
+    SecArgumentSeparator &
+    
+    # Cookie Format
+    SecCookieFormat 0
+    
+    # Unicode Mapping
+    SecUnicodeMapFile unicode.mapping 20127
+    
+    # Status Engine
+    SecStatusEngine On
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-waf-config
+  namespace: yieldrails-prod
+data:
+  nginx.conf: |
+    # YieldRails NGINX with ModSecurity WAF Configuration
+    
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+    
+    # Security: Hide nginx version
+    server_tokens off;
+    
+    # Load ModSecurity module
+    load_module modules/ngx_http_modsecurity_module.so;
+    
+    events {
+        worker_connections 1024;
+        use epoll;
+        multi_accept on;
+    }
+    
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        
+        # Security Headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' wss:; frame-ancestors 'self';" always;
+        
+        # ModSecurity Configuration
+        modsecurity on;
+        modsecurity_rules_file /etc/modsecurity/main.conf;
+        
+        # Rate Limiting
+        limit_req_zone $binary_remote_addr zone=api:10m rate=100r/m;
+        limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/m;
+        limit_conn_zone $binary_remote_addr zone=conn_limit_per_ip:10m;
+        
+        # Logging Format
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                       '$status $body_bytes_sent "$http_referer" '
+                       '"$http_user_agent" "$http_x_forwarded_for" '
+                       'rt=$request_time uct="$upstream_connect_time" '
+                       'uht="$upstream_header_time" urt="$upstream_response_time"';
+        
+        access_log /var/log/nginx/access.log main;
+        
+        # Performance Optimizations
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+        
+        # Gzip Compression
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types text/plain text/css text/xml text/javascript
+                   application/javascript application/xml+rss application/json;
+        
+        # Upstream Backends
+        upstream backend {
+            least_conn;
+            server backend:3000 max_fails=3 fail_timeout=30s;
+            keepalive 32;
+        }
+        
+        upstream frontend {
+            least_conn;
+            server frontend:3000 max_fails=3 fail_timeout=30s;
+            keepalive 32;
+        }
+        
+        # Main Server Block
+        server {
+            listen 80;
+            server_name _;
+            return 301 https://$server_name$request_uri;
+        }
+        
+        server {
+            listen 443 ssl http2;
+            server_name api.yieldrails.com;
+            
+            # SSL Configuration
+            ssl_certificate /etc/nginx/ssl/yieldrails.crt;
+            ssl_certificate_key /etc/nginx/ssl/yieldrails.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
+            ssl_prefer_server_ciphers off;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 1d;
+            ssl_session_tickets off;
+            
+            # HSTS
+            add_header Strict-Transport-Security "max-age=63072000" always;
+            
+            # Rate Limiting
+            limit_req zone=api burst=200 nodelay;
+            limit_conn conn_limit_per_ip 20;
+            
+            # API Routes
+            location /api/ {
+                # Additional rate limiting for auth endpoints
+                location /api/auth/ {
+                    limit_req zone=auth burst=10 nodelay;
+                    proxy_pass http://backend;
+                    include /etc/nginx/proxy_params;
+                }
+                
+                proxy_pass http://backend;
+                include /etc/nginx/proxy_params;
+                
+                # Additional security headers for API
+                add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+                add_header Pragma "no-cache" always;
+                add_header Expires "0" always;
+            }
+            
+            # WebSocket Support
+            location /ws/ {
+                proxy_pass http://backend;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_set_header Host $host;
+                proxy_cache_bypass $http_upgrade;
+            }
+            
+            # Health Check Endpoint (bypass WAF)
+            location /health {
+                modsecurity off;
+                proxy_pass http://backend;
+                access_log off;
+            }
+        }
+        
+        server {
+            listen 443 ssl http2;
+            server_name app.yieldrails.com;
+            
+            # SSL Configuration (same as API)
+            ssl_certificate /etc/nginx/ssl/yieldrails.crt;
+            ssl_certificate_key /etc/nginx/ssl/yieldrails.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
+            ssl_prefer_server_ciphers off;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 1d;
+            ssl_session_tickets off;
+            
+            # HSTS
+            add_header Strict-Transport-Security "max-age=63072000" always;
+            
+            # Frontend Application
+            location / {
+                proxy_pass http://frontend;
+                include /etc/nginx/proxy_params;
+                
+                # Caching for static assets
+                location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+                    expires 1y;
+                    add_header Cache-Control "public, immutable";
+                    proxy_pass http://frontend;
+                }
+            }
+        }
+    }
+
+  proxy_params: |
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 30s;
+    proxy_send_timeout 30s;
+    proxy_read_timeout 30s;
+    proxy_buffering on;
+    proxy_buffer_size 4k;
+    proxy_buffers 8 4k;
+    proxy_busy_buffers_size 8k;

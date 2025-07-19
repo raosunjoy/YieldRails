@@ -1,0 +1,142 @@
+# Production-optimized multi-stage build for YieldRails backend with enhanced security
+
+# ---- Base Node ----
+FROM node:18-alpine AS base
+
+# Create a non-root user for security
+RUN addgroup -g 1001 -S nodegroup && \
+    adduser -S nodeuser -u 1001 -G nodegroup
+
+WORKDIR /app
+
+# Install security updates and necessary packages
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache \
+    tini \
+    openssl \
+    ca-certificates \
+    && rm -rf /var/cache/apk/*
+
+# Set proper ownership
+RUN chown -R nodeuser:nodegroup /app
+
+# ---- Dependencies ----
+FROM base AS dependencies
+
+# Copy package files with proper ownership
+COPY --chown=nodeuser:nodegroup package.json package-lock.json ./
+
+# Switch to non-root user
+USER nodeuser
+
+# Install production dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Install ALL dependencies for the build step
+RUN cp -R node_modules /tmp/node_modules
+RUN npm ci
+
+# ---- Build ----
+FROM dependencies AS build
+
+# Copy source files with proper ownership
+COPY --chown=nodeuser:nodegroup . .
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build TypeScript
+RUN npm run build
+
+# Remove development dependencies and clean up
+RUN npm prune --production && npm cache clean --force
+
+# ---- Security Scanning Stage ----
+FROM aquasec/trivy:latest AS security-scan
+COPY --from=build /app /scan-target
+RUN trivy fs --exit-code 0 --no-progress --format table /scan-target
+
+# ---- Release ----
+FROM base AS release
+
+# Security: Install security updates
+RUN apk update && apk upgrade && rm -rf /var/cache/apk/*
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Create necessary directories with proper permissions
+USER nodeuser
+RUN mkdir -p /app/logs /app/tmp && \
+    chmod 755 /app/logs /app/tmp
+
+# Copy production dependencies with proper ownership
+COPY --from=dependencies --chown=nodeuser:nodegroup /tmp/node_modules ./node_modules
+
+# Copy built application with proper ownership
+COPY --from=build --chown=nodeuser:nodegroup /app/dist ./dist
+COPY --from=build --chown=nodeuser:nodegroup /app/prisma ./prisma
+COPY --from=build --chown=nodeuser:nodegroup /app/package.json ./
+COPY --from=build --chown=nodeuser:nodegroup /app/scripts ./scripts
+
+# Create health check script
+COPY --chown=nodeuser:nodegroup <<EOF /app/scripts/health-check.js
+const http = require('http');
+const options = {
+  host: 'localhost',
+  port: process.env.PORT || 3000,
+  path: '/api/health',
+  timeout: 2000
+};
+
+const req = http.request(options, (res) => {
+  if (res.statusCode === 200) {
+    process.exit(0);
+  } else {
+    process.exit(1);
+  }
+});
+
+req.on('error', () => {
+  process.exit(1);
+});
+
+req.on('timeout', () => {
+  req.destroy();
+  process.exit(1);
+});
+
+req.end();
+EOF
+
+# Set proper permissions for health check script
+RUN chmod +x /app/scripts/health-check.js
+
+# Security: Remove unnecessary packages and clean up
+USER root
+RUN apk del openssl && \
+    rm -rf /var/cache/apk/* /tmp/* /var/tmp/*
+
+# Switch back to non-root user
+USER nodeuser
+
+# Expose the application port
+EXPOSE 3000
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node /app/scripts/health-check.js
+
+# Security labels
+LABEL maintainer="YieldRails Security Team"
+LABEL security.scan="enabled"
+LABEL security.non-root="true"
+LABEL version="1.0.0"
+
+# Use tini as entrypoint to handle signals properly
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Start the application
+CMD ["node", "dist/src/server.js"]
