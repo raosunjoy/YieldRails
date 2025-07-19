@@ -159,11 +159,35 @@ export const generateToken = (user: AuthenticatedUser): string => {
  */
 export const verifyEthereumSignature = (address: string, message: string, signature: string): boolean => {
     try {
-        // This would implement Ethereum signature verification
-        // For now, return true as placeholder
-        return true;
+        // Ethereum signed message prefix
+        const prefix = "\x19Ethereum Signed Message:\n";
+        const prefixedMessage = prefix + message.length + message;
+        
+        // Hash the prefixed message
+        const messageHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(prefixedMessage));
+        
+        // Recover the address from the signature
+        const messageHashBytes = ethers.utils.arrayify(messageHash);
+        const recoveredAddress = ethers.utils.recoverAddress(messageHashBytes, signature);
+        
+        // Compare the recovered address with the provided address
+        const isValid = recoveredAddress.toLowerCase() === address.toLowerCase();
+        
+        if (!isValid) {
+            logSecurityEvent('invalid_signature', 'medium', {
+                providedAddress: address,
+                recoveredAddress,
+                message,
+            });
+        }
+        
+        return isValid;
     } catch (error) {
         logger.error('Ethereum signature verification failed:', error);
+        logSecurityEvent('signature_verification_error', 'high', {
+            address,
+            error: (error as Error).message,
+        });
         return false;
     }
 };
