@@ -1,286 +1,165 @@
 # YieldRails Testnet Deployment Guide
-*Complete guide for deploying YieldRails smart contracts to testnets*
 
----
+This guide provides instructions for deploying YieldRails smart contracts to various testnets.
 
-## 🎯 Overview
+## Table of Contents
 
-This guide covers deploying YieldRails smart contracts to various testnets including Sepolia, Mumbai, Arbitrum Sepolia, and Base Sepolia. We have successfully demonstrated local deployment and gas optimization.
+- [Prerequisites](#prerequisites)
+- [Supported Networks](#supported-networks)
+- [Environment Setup](#environment-setup)
+- [Deployment Process](#deployment-process)
+- [Contract Verification](#contract-verification)
+- [Testing Deployed Contracts](#testing-deployed-contracts)
+- [Troubleshooting](#troubleshooting)
 
-## 🏆 Infrastructure Ready Summary
+## Prerequisites
 
-### ✅ Local Testing Achievements
-- **Successfully tested** deployment on Hardhat network
-- **Gas optimization confirmed**: 64.2% reduction (503k → 180k gas)
-- **All contracts functional** with full testing completed
-- **Deployment infrastructure ready** for testnet deployment
+- Node.js 18 or higher
+- Hardhat installed
+- Private key with testnet funds
+- API keys for block explorers (Etherscan, Polygonscan, etc.)
 
-### 🔄 Pending: Live Testnet Deployment
-- **Status**: Infrastructure complete, awaiting testnet funds
-- **Next Step**: Get testnet ETH from faucets and deploy to live networks
+## Supported Networks
 
-### 📊 Gas Optimization Results
-```
-Original YieldEscrow:    503,368 gas
-Optimized Version:       201,636 gas (59.9% improvement)  
-Ultra Version:           180,428 gas (64.2% improvement)
-Gas Saved:               322,940 gas per transaction
-```
+YieldRails supports deployment to the following testnets:
 
----
+- Ethereum Sepolia
+- Polygon Mumbai
+- Arbitrum Goerli
+- Base Goerli
+- XRP EVM Sidechain Testnet
+- Solana Devnet
 
-## 🛠️ Deployment Infrastructure
+## Environment Setup
 
-### Contract Versions Available
-1. **YieldEscrow**: Full-featured production version (503k gas)
-2. **YieldEscrowOptimized**: Balanced optimization (201k gas)
-3. **YieldEscrowUltra**: Maximum gas efficiency (180k gas)
+1. Navigate to the contracts directory:
+   ```bash
+   cd contracts
+   ```
 
-### Deployment Scripts
-- `scripts/deploy.js`: Full contract suite deployment
-- `scripts/deploy-optimized.js`: Optimized contracts only
-- `scripts/verify-contracts.js`: Block explorer verification
-- `scripts/verify-helper.js`: User-friendly verification
+2. Create environment file:
+   ```bash
+   cp .env.example .env.testnet
+   ```
 
----
+3. Update the `.env.testnet` file with your private key and API keys:
+   ```
+   PRIVATE_KEY=your_private_key_here
+   ETHERSCAN_API_KEY=your_etherscan_api_key
+   POLYGONSCAN_API_KEY=your_polygonscan_api_key
+   ARBISCAN_API_KEY=your_arbiscan_api_key
+   BASESCAN_API_KEY=your_basescan_api_key
+   ```
 
-## 🌐 Testnet Configuration
+## Deployment Process
 
-### Network Details
+### 1. Get Testnet Funds
 
-#### Sepolia (Ethereum Testnet)
-- **Chain ID**: 11155111
-- **RPC URL**: `https://ethereum-sepolia-rpc.publicnode.com`
-- **Block Explorer**: https://sepolia.etherscan.io
-- **USDC Address**: `0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8`
-- **Faucet**: https://sepoliafaucet.com/
+Run the script to get testnet funds:
 
-#### Mumbai (Polygon Testnet)
-- **Chain ID**: 80001
-- **RPC URL**: `https://rpc-mumbai.maticvigil.com`
-- **Block Explorer**: https://mumbai.polygonscan.com
-- **USDC Address**: `0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`
-- **Faucet**: https://faucet.polygon.technology/
-
-#### Arbitrum Sepolia
-- **Chain ID**: 421614
-- **RPC URL**: `https://sepolia-rollup.arbitrum.io/rpc`
-- **Block Explorer**: https://sepolia.arbiscan.io
-- **USDC Address**: `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`
-- **Faucet**: https://bridge.arbitrum.io/
-
-#### Base Sepolia
-- **Chain ID**: 84532
-- **RPC URL**: `https://sepolia.base.org`
-- **Block Explorer**: https://sepolia.basescan.org
-- **USDC Address**: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
-- **Faucet**: https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet
-
----
-
-## 💰 Getting Testnet Funds
-
-### Step 1: Get Testnet ETH
-Visit the faucets listed above and request testnet ETH for your deployer address:
-`0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
-
-### Step 2: Get Testnet USDC (Optional)
-Most testnets have USDC available. Addresses are listed in the network configuration above.
-
-### Minimum Required Balance
-- **Sepolia**: 0.5 ETH (deployment + verification)
-- **Mumbai**: 5 MATIC (deployment + verification)
-- **Arbitrum Sepolia**: 0.2 ETH (lower gas costs)
-- **Base Sepolia**: 0.2 ETH (lower gas costs)
-
----
-
-## 🚀 Deployment Commands
-
-### 1. Deploy to Sepolia
 ```bash
-cd contracts
+node scripts/get-testnet-funds.js
+```
+
+This script will:
+- Check your balance on each testnet
+- Provide links to faucets if needed
+- Wait for confirmation of funds
+
+### 2. Deploy Contracts
+
+To deploy to all supported testnets:
+
+```bash
+npx hardhat run scripts/deploy.js --network all-testnets
+```
+
+To deploy to a specific testnet:
+
+```bash
+npx hardhat run scripts/deploy.js --network sepolia
+npx hardhat run scripts/deploy.js --network mumbai
+npx hardhat run scripts/deploy.js --network arbitrum-goerli
+npx hardhat run scripts/deploy.js --network base-goerli
+npx hardhat run scripts/deploy.js --network xrp-testnet
+npx hardhat run scripts/deploy.js --network solana-devnet
+```
+
+### 3. Deploy Optimized Contracts
+
+For gas-optimized versions:
+
+```bash
 npx hardhat run scripts/deploy-optimized.js --network sepolia
 ```
 
-### 2. Deploy to Mumbai
-```bash
-npx hardhat run scripts/deploy-optimized.js --network mumbai
-```
+## Contract Verification
 
-### 3. Deploy to Arbitrum Sepolia
-```bash
-npx hardhat run scripts/deploy-optimized.js --network arbitrumSepolia
-```
-
-### 4. Deploy to Base Sepolia
-```bash
-npx hardhat run scripts/deploy-optimized.js --network baseSepolia
-```
-
----
-
-## 🔍 Contract Verification
-
-### Automatic Verification
-After deployment, verify contracts on block explorers:
+Verify contracts on block explorers:
 
 ```bash
-# Verify on Sepolia
 npx hardhat run scripts/verify-contracts.js --network sepolia
-
-# Verify on Mumbai  
-npx hardhat run scripts/verify-contracts.js --network mumbai
-
-# Verify on Arbitrum Sepolia
-npx hardhat run scripts/verify-contracts.js --network arbitrumSepolia
-
-# Verify on Base Sepolia
-npx hardhat run scripts/verify-contracts.js --network baseSepolia
 ```
 
-### Manual Verification
-Use the helper script for user-friendly verification:
+This script will:
+- Retrieve deployment addresses from deployment files
+- Verify each contract on the appropriate block explorer
+- Log verification status and links
+
+## Testing Deployed Contracts
+
+Run basic tests against deployed contracts:
+
 ```bash
-node scripts/verify-helper.js sepolia
+npx hardhat run scripts/validate-deployment.js --network sepolia
 ```
 
----
+This script will:
+- Connect to deployed contracts
+- Run basic functionality tests (deposit, yield calculation, etc.)
+- Verify contract state and configuration
 
-## 📋 Post-Deployment Checklist
-
-### ✅ Immediate Actions
-1. **Save deployment addresses** from the generated JSON files
-2. **Verify contracts** on block explorers
-3. **Test basic functionality** (deposit/release)
-4. **Configure supported tokens** (USDC)
-5. **Set up monitoring** for contract interactions
-
-### ✅ Integration Preparation
-1. **Update frontend configuration** with new contract addresses
-2. **Test cross-chain functionality** between networks
-3. **Document API endpoints** for each network
-4. **Set up error monitoring** and alerting
-5. **Prepare user documentation** with testnet details
-
----
-
-## 🔧 Configuration Files
-
-### Environment Variables Required
-```bash
-# Private key for deployment
-PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-
-# Admin addresses
-DEPLOYER_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-ADMIN_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-TREASURY_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-
-# RPC URLs (configured with public endpoints)
-SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
-MUMBAI_RPC_URL=https://rpc-mumbai.maticvigil.com
-ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
-BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
-
-# API keys for verification (optional)
-ETHERSCAN_API_KEY=your-etherscan-api-key
-POLYGONSCAN_API_KEY=your-polygonscan-api-key
-ARBISCAN_API_KEY=your-arbiscan-api-key
-BASESCAN_API_KEY=your-basescan-api-key
-```
-
----
-
-## 📊 Expected Deployment Results
-
-### Contract Sizes
-- **YieldEscrowOptimized**: ~5.0 KB deployed size
-- **YieldEscrowUltra**: ~1.9 KB deployed size
-- **MockUSDC**: ~2.7 KB deployed size
-
-### Gas Usage
-- **Deployment**: ~1.5M gas total for all contracts
-- **Configuration**: ~200k gas for setup transactions
-- **Per-transaction**: 180k-201k gas for deposits
-
-### Deployment Time
-- **Sepolia**: 2-3 minutes (slower block times)
-- **Mumbai**: 1-2 minutes (faster block times)
-- **Arbitrum Sepolia**: 30-60 seconds (very fast)
-- **Base Sepolia**: 30-60 seconds (very fast)
-
----
-
-## 🚨 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
-#### 1. "Insufficient funds" Error
-**Solution**: Request more testnet ETH from faucets
-```bash
-# Check balance
-npx hardhat run scripts/check-balance.js --network sepolia
-```
+1. **Insufficient Funds**:
+   - Use the faucet links provided by the `get-testnet-funds.js` script
+   - Check your balance with `npx hardhat balance --network sepolia`
 
-#### 2. "Bad address checksum" Error
-**Solution**: Ensure all addresses in config are properly checksummed
-```javascript
-// Use ethers.getAddress() to checksum
-const address = ethers.getAddress("0x742d35cc...");
-```
+2. **Failed Transactions**:
+   - Increase gas limit in Hardhat config
+   - Check network congestion and adjust gas price
 
-#### 3. "Network connection timeout"
-**Solution**: Try alternative RPC endpoints
-```bash
-# Alternative Sepolia RPC
-SEPOLIA_RPC_URL=https://rpc.sepolia.org
-```
+3. **Verification Failures**:
+   - Ensure compiler version matches between deployment and verification
+   - Check that all constructor arguments are correctly provided
+   - Wait a few minutes after deployment before verifying
 
-#### 4. "Contract verification failed"
-**Solution**: Wait 30 seconds after deployment, then retry verification
+### Network-Specific Issues
 
----
+#### Ethereum Sepolia
+- Faucet: https://sepoliafaucet.com/
+- Block Explorer: https://sepolia.etherscan.io/
 
-## 🎯 Next Steps After Deployment
+#### Polygon Mumbai
+- Faucet: https://faucet.polygon.technology/
+- Block Explorer: https://mumbai.polygonscan.com/
 
-### 1. Frontend Integration
-- Update contract addresses in frontend configuration
-- Test wallet connections to testnets
-- Implement network switching
+#### Arbitrum Goerli
+- Faucet: https://goerlifaucet.com/
+- Block Explorer: https://goerli.arbiscan.io/
 
-### 2. API Integration
-- Deploy backend services with testnet contract addresses
-- Configure CORS for testnet domains
-- Set up testnet database instances
+#### Base Goerli
+- Faucet: https://goerli-faucet.pk910.de/
+- Block Explorer: https://goerli.basescan.org/
 
-### 3. End-to-End Testing
-- Test complete payment flows
-- Verify cross-chain functionality
-- Load test with multiple simultaneous transactions
+## Deployment Records
 
-### 4. Monitoring Setup
-- Configure contract event monitoring
-- Set up gas price alerts
-- Implement transaction failure notifications
+After successful deployment, update the deployment records in `deployments/` directory with:
 
----
-
-## 📞 Support and Resources
-
-### Documentation
-- [Hardhat Network Configuration](https://hardhat.org/config/#networks-configuration)
-- [OpenZeppelin Contract Verification](https://docs.openzeppelin.com/defender/guide-deploying)
-- [Etherscan Contract Verification](https://docs.etherscan.io/tutorials/verifying-contracts-programmatically)
-
-### Community Resources
-- [Sepolia Faucet Discord](https://discord.gg/ethereum-org)
-- [Polygon Faucet Support](https://support.polygon.technology/)
-- [Arbitrum Developer Discord](https://discord.gg/arbitrum)
-- [Base Developer Discord](https://discord.gg/buildonbase)
-
----
-
-**Status**: ✅ Deployment infrastructure complete and ready for testnet deployment  
-**Last Updated**: July 13, 2025  
-**Next Phase**: Frontend integration and end-to-end testing
+- Contract addresses
+- Deployment transaction hashes
+- Block numbers
+- Network information
+- Deployment timestamp

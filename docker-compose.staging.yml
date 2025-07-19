@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # Backend API service (staging environment)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=staging
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/yieldrails_staging
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - API_KEY=${API_KEY}
+      - CHAINALYSIS_API_KEY=${CHAINALYSIS_API_KEY}
+      - CHAINALYSIS_API_URL=${CHAINALYSIS_API_URL}
+      - CIRCLE_API_KEY=${CIRCLE_API_KEY}
+      - CIRCLE_API_URL=${CIRCLE_API_URL}
+      - MOONPAY_API_KEY=${MOONPAY_API_KEY}
+      - MOONPAY_API_URL=${MOONPAY_API_URL}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - ./backend/logs:/app/logs
+    # Run database migrations before starting the service
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        npx wait-on -t 60000 tcp:postgres:5432 &&
+        echo 'Running database migrations...' &&
+        npx prisma migrate deploy &&
+        echo 'Starting application...' &&
+        node dist/src/server.js
+      "
+
+  # Frontend service (staging environment)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://backend:3000
+    ports:
+      - "8080:3000"
+    environment:
+      - NODE_ENV=staging
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=yieldrails_staging
+    volumes:
+      - postgres_data_staging:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_staging:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command: redis-server --appendonly yes
+
+volumes:
+  postgres_data_staging:
+  redis_data_staging:
