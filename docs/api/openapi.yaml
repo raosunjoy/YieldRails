@@ -1,0 +1,1474 @@
+openapi: 3.0.3
+info:
+  title: YieldRails API
+  description: |
+    The YieldRails API provides comprehensive endpoints for yield-generating cross-chain payments and DeFi protocol integrations.
+    
+    ## Features
+    - **Payment Management**: Create and manage yield-generating payments
+    - **Yield Optimization**: Access multiple yield strategies and optimize returns
+    - **Cross-Chain Bridge**: Execute cross-chain transactions with yield preservation
+    - **Compliance**: KYC/AML verification and transaction monitoring
+    - **External DeFi Integration**: Noble (T-bills), Resolv (delta-neutral), Aave (lending), Circle CCTP
+    
+    ## Authentication
+    The API uses JWT Bearer tokens for authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+    
+    ## Rate Limiting
+    - General endpoints: 100 requests per minute
+    - Authentication endpoints: 10 requests per minute
+    - Payment creation: 20 requests per minute
+  version: 1.0.0
+  contact:
+    name: YieldRails API Support
+    url: https://yieldrails.com/support
+    email: api-support@yieldrails.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.yieldrails.com
+    description: Production server
+  - url: https://staging-api.yieldrails.com
+    description: Staging server
+  - url: http://localhost:3001
+    description: Development server
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Authentication Endpoints
+  /api/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Register a new user account with email/password or wallet signature
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/EmailRegistrationRequest'
+                - $ref: '#/components/schemas/WalletRegistrationRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate user
+      description: Login with email/password or wallet signature
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/EmailLoginRequest'
+                - $ref: '#/components/schemas/WalletLoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Get a new access token using a refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+                  description: Valid refresh token
+              required:
+                - refreshToken
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Payment Endpoints
+  /api/payments:
+    get:
+      tags:
+        - Payments
+      summary: Get user payments
+      description: Retrieve paginated list of user payments with optional filtering
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          description: Filter by payment status
+          schema:
+            $ref: '#/components/schemas/PaymentStatus'
+        - name: startDate
+          in: query
+          description: Filter payments from this date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          description: Filter payments until this date (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Payments retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Payment'
+
+    post:
+      tags:
+        - Payments
+      summary: Create a new payment
+      description: Create a yield-generating payment with specified strategy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Payment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/payments/{paymentId}:
+    get:
+      tags:
+        - Payments
+      summary: Get payment details
+      description: Retrieve detailed information about a specific payment
+      parameters:
+        - $ref: '#/components/parameters/PaymentIdParam'
+      responses:
+        '200':
+          description: Payment details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentDetails'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Payments
+      summary: Update payment
+      description: Update payment status or settings
+      parameters:
+        - $ref: '#/components/parameters/PaymentIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePaymentRequest'
+      responses:
+        '200':
+          description: Payment updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/payments/{paymentId}/release:
+    post:
+      tags:
+        - Payments
+      summary: Release payment
+      description: Release payment to recipient with yield distribution
+      parameters:
+        - $ref: '#/components/parameters/PaymentIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                signature:
+                  type: string
+                  description: Transaction signature for authorization
+              required:
+                - signature
+      responses:
+        '200':
+          description: Payment released successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentReleaseResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Yield Strategy Endpoints
+  /api/yield/strategies:
+    get:
+      tags:
+        - Yield
+      summary: Get available yield strategies
+      description: Retrieve all available yield strategies with real-time APY data
+      responses:
+        '200':
+          description: Yield strategies retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/YieldStrategy'
+
+  /api/yield/strategies/comparison:
+    get:
+      tags:
+        - Yield
+      summary: Compare yield strategies
+      description: Get detailed comparison of all yield strategies with performance metrics
+      responses:
+        '200':
+          description: Strategy comparison data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyComparison'
+
+  /api/yield/optimize:
+    post:
+      tags:
+        - Yield
+      summary: Get yield optimization
+      description: Get personalized yield optimization recommendations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/YieldOptimizationRequest'
+      responses:
+        '200':
+          description: Optimization recommendations generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/YieldOptimizationResponse'
+
+  # Cross-Chain Bridge Endpoints
+  /api/crosschain/estimate:
+    post:
+      tags:
+        - Cross-Chain Bridge
+      summary: Estimate bridge transaction
+      description: Get fee estimation and time estimates for cross-chain transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BridgeEstimateRequest'
+      responses:
+        '200':
+          description: Bridge estimation calculated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeEstimate'
+
+  /api/crosschain/transfer:
+    post:
+      tags:
+        - Cross-Chain Bridge
+      summary: Initiate cross-chain transfer
+      description: Start a cross-chain transfer with yield preservation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BridgeTransferRequest'
+      responses:
+        '201':
+          description: Bridge transfer initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeTransaction'
+
+  /api/crosschain/transactions/{transactionId}:
+    get:
+      tags:
+        - Cross-Chain Bridge
+      summary: Get bridge transaction status
+      description: Retrieve current status and details of a bridge transaction
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          description: Bridge transaction ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Bridge transaction status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeTransaction'
+
+  # External Services Endpoints
+  /api/external/noble/pools:
+    get:
+      tags:
+        - External Services
+      summary: Get Noble Protocol pools
+      description: Retrieve available T-bill pools from Noble Protocol
+      responses:
+        '200':
+          description: Noble pools retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NoblePool'
+
+  /api/external/resolv/vaults:
+    get:
+      tags:
+        - External Services
+      summary: Get Resolv Protocol vaults
+      description: Retrieve available delta-neutral vaults from Resolv Protocol
+      responses:
+        '200':
+          description: Resolv vaults retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResolvVault'
+
+  /api/external/aave/markets:
+    get:
+      tags:
+        - External Services
+      summary: Get Aave Protocol markets
+      description: Retrieve available lending markets from Aave Protocol
+      responses:
+        '200':
+          description: Aave markets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AaveMarket'
+
+  # Health and Monitoring Endpoints
+  /api/health:
+    get:
+      tags:
+        - Health
+      summary: Basic health check
+      description: Get basic API health status
+      security: []
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: API is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/health/detailed:
+    get:
+      tags:
+        - Health
+      summary: Detailed health check
+      description: Get comprehensive health status including external services
+      security: []
+      responses:
+        '200':
+          description: Detailed health information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealthResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Page number for pagination (1-based)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    PaymentIdParam:
+      name: paymentId
+      in: path
+      required: true
+      description: Unique payment identifier
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: Unauthorized - invalid or missing authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Conflict:
+      description: Conflict - resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    TooManyRequests:
+      description: Too many requests - rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    # Authentication Schemas
+    EmailRegistrationRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+        password:
+          type: string
+          minLength: 8
+          description: User password (minimum 8 characters)
+        name:
+          type: string
+          description: User full name
+        userType:
+          type: string
+          enum: [individual, merchant]
+          description: Type of user account
+      required:
+        - email
+        - password
+        - name
+        - userType
+
+    WalletRegistrationRequest:
+      type: object
+      properties:
+        walletAddress:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{40}$'
+          description: Ethereum wallet address
+        signature:
+          type: string
+          description: Signed message proving wallet ownership
+        message:
+          type: string
+          description: Original message that was signed
+        name:
+          type: string
+          description: User full name
+        userType:
+          type: string
+          enum: [individual, merchant]
+          description: Type of user account
+      required:
+        - walletAddress
+        - signature
+        - message
+        - name
+        - userType
+
+    EmailLoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    WalletLoginRequest:
+      type: object
+      properties:
+        walletAddress:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{40}$'
+        signature:
+          type: string
+        message:
+          type: string
+      required:
+        - walletAddress
+        - signature
+        - message
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+          description: JWT access token
+        refreshToken:
+          type: string
+          description: Refresh token for obtaining new access tokens
+        expiresIn:
+          type: integer
+          description: Access token expiration time in seconds
+      required:
+        - user
+        - accessToken
+        - refreshToken
+        - expiresIn
+
+    TokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+      required:
+        - accessToken
+        - expiresIn
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        walletAddress:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{40}$'
+          nullable: true
+        userType:
+          type: string
+          enum: [individual, merchant]
+        kycStatus:
+          type: string
+          enum: [pending, approved, rejected, not_required]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - userType
+        - kycStatus
+        - isActive
+        - createdAt
+        - updatedAt
+
+    # Payment Schemas
+    CreatePaymentRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          pattern: '^[0-9]+(\.[0-9]+)?$'
+          description: Payment amount in token units
+        token:
+          type: string
+          description: Token symbol (e.g., USDC, USDT)
+        recipient:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{40}$'
+          description: Recipient wallet address
+        yieldStrategy:
+          type: string
+          description: Selected yield strategy ID
+        sourceChain:
+          type: integer
+          description: Source blockchain chain ID
+        destinationChain:
+          type: integer
+          description: Destination blockchain chain ID
+        memo:
+          type: string
+          maxLength: 500
+          description: Optional payment memo
+        releaseDate:
+          type: string
+          format: date-time
+          description: Scheduled release date (optional)
+      required:
+        - amount
+        - token
+        - recipient
+        - yieldStrategy
+        - sourceChain
+        - destinationChain
+
+    UpdatePaymentRequest:
+      type: object
+      properties:
+        memo:
+          type: string
+          maxLength: 500
+        releaseDate:
+          type: string
+          format: date-time
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        token:
+          type: string
+        recipient:
+          type: string
+        sender:
+          type: string
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        yieldStrategy:
+          type: string
+        estimatedYield:
+          type: string
+        actualYield:
+          type: string
+          nullable: true
+        sourceChain:
+          type: integer
+        destinationChain:
+          type: integer
+        memo:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        releaseDate:
+          type: string
+          format: date-time
+          nullable: true
+        releasedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - amount
+        - token
+        - recipient
+        - sender
+        - status
+        - yieldStrategy
+        - estimatedYield
+        - sourceChain
+        - destinationChain
+        - createdAt
+
+    PaymentStatus:
+      type: string
+      enum:
+        - pending
+        - confirmed
+        - yielding
+        - released
+        - cancelled
+        - failed
+      description: Current payment status
+
+    PaymentDetails:
+      allOf:
+        - $ref: '#/components/schemas/Payment'
+        - type: object
+          properties:
+            transactionHash:
+              type: string
+              nullable: true
+            blockNumber:
+              type: integer
+              nullable: true
+            gasUsed:
+              type: string
+              nullable: true
+            yieldBreakdown:
+              $ref: '#/components/schemas/YieldBreakdown'
+            bridgeDetails:
+              $ref: '#/components/schemas/BridgeDetails'
+              nullable: true
+
+    PaymentReleaseResponse:
+      type: object
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+        transactionHash:
+          type: string
+        yieldDistribution:
+          $ref: '#/components/schemas/YieldDistribution'
+        status:
+          type: string
+          enum: [processing, completed]
+      required:
+        - paymentId
+        - transactionHash
+        - yieldDistribution
+        - status
+
+    # Yield Schemas
+    YieldStrategy:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        protocolName:
+          type: string
+        chainId:
+          type: integer
+        strategyType:
+          type: string
+          enum: [lending, liquidity_mining, t_bills, delta_neutral]
+        expectedAPY:
+          type: number
+          format: double
+        actualAPY:
+          type: number
+          format: double
+        riskLevel:
+          type: string
+          enum: [low, medium, high]
+        minAmount:
+          type: string
+        maxAmount:
+          type: string
+          nullable: true
+        totalValueLocked:
+          type: string
+        isActive:
+          type: boolean
+        realTimeData:
+          type: object
+          nullable: true
+          properties:
+            lastUpdated:
+              type: string
+              format: date-time
+            source:
+              type: string
+            status:
+              type: string
+      required:
+        - id
+        - name
+        - description
+        - protocolName
+        - chainId
+        - strategyType
+        - expectedAPY
+        - actualAPY
+        - riskLevel
+        - minAmount
+        - totalValueLocked
+        - isActive
+
+    YieldOptimizationRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+        riskTolerance:
+          type: string
+          enum: [conservative, moderate, aggressive]
+        timeHorizon:
+          type: integer
+          description: Investment time horizon in days
+        preferredChains:
+          type: array
+          items:
+            type: integer
+          description: Preferred blockchain chain IDs
+      required:
+        - amount
+        - riskTolerance
+        - timeHorizon
+
+    YieldOptimizationResponse:
+      type: object
+      properties:
+        recommendedStrategy:
+          $ref: '#/components/schemas/YieldStrategy'
+        alternativeStrategies:
+          type: array
+          items:
+            $ref: '#/components/schemas/YieldStrategy'
+        projectedReturns:
+          type: object
+          properties:
+            daily:
+              type: string
+            monthly:
+              type: string
+            annually:
+              type: string
+        riskAnalysis:
+          type: object
+          properties:
+            volatility:
+              type: number
+            maxDrawdown:
+              type: string
+            sharpeRatio:
+              type: number
+      required:
+        - recommendedStrategy
+        - alternativeStrategies
+        - projectedReturns
+        - riskAnalysis
+
+    YieldBreakdown:
+      type: object
+      properties:
+        totalYield:
+          type: string
+        userYield:
+          type: string
+          description: 70% of total yield
+        merchantYield:
+          type: string
+          description: 20% of total yield
+        protocolYield:
+          type: string
+          description: 10% of total yield
+        yieldPeriod:
+          type: integer
+          description: Yield accumulation period in seconds
+      required:
+        - totalYield
+        - userYield
+        - merchantYield
+        - protocolYield
+        - yieldPeriod
+
+    YieldDistribution:
+      type: object
+      properties:
+        totalDistributed:
+          type: string
+        distributions:
+          type: array
+          items:
+            type: object
+            properties:
+              recipient:
+                type: string
+              amount:
+                type: string
+              percentage:
+                type: number
+              transactionHash:
+                type: string
+      required:
+        - totalDistributed
+        - distributions
+
+    # Cross-Chain Bridge Schemas
+    BridgeEstimateRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+        token:
+          type: string
+        sourceChain:
+          type: integer
+        destinationChain:
+          type: integer
+      required:
+        - amount
+        - token
+        - sourceChain
+        - destinationChain
+
+    BridgeEstimate:
+      type: object
+      properties:
+        fees:
+          type: object
+          properties:
+            bridgeFee:
+              type: string
+            gasFee:
+              type: string
+            totalFee:
+              type: string
+        estimatedTime:
+          type: integer
+          description: Estimated completion time in seconds
+        exchangeRate:
+          type: string
+          nullable: true
+      required:
+        - fees
+        - estimatedTime
+
+    BridgeTransferRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+        token:
+          type: string
+        sourceChain:
+          type: integer
+        destinationChain:
+          type: integer
+        recipient:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{40}$'
+        yieldStrategy:
+          type: string
+          description: Yield strategy to use during transit
+      required:
+        - amount
+        - token
+        - sourceChain
+        - destinationChain
+        - recipient
+
+    BridgeTransaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        token:
+          type: string
+        sourceChain:
+          type: integer
+        destinationChain:
+          type: integer
+        sender:
+          type: string
+        recipient:
+          type: string
+        status:
+          $ref: '#/components/schemas/BridgeStatus'
+        sourceTransactionHash:
+          type: string
+          nullable: true
+        destinationTransactionHash:
+          type: string
+          nullable: true
+        fees:
+          type: object
+          properties:
+            bridgeFee:
+              type: string
+            gasFee:
+              type: string
+            totalFee:
+              type: string
+        yieldEarned:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - amount
+        - token
+        - sourceChain
+        - destinationChain
+        - sender
+        - recipient
+        - status
+        - fees
+        - createdAt
+
+    BridgeStatus:
+      type: string
+      enum:
+        - pending
+        - confirmed_source
+        - in_transit
+        - confirmed_destination
+        - completed
+        - failed
+        - refunded
+
+    BridgeDetails:
+      type: object
+      properties:
+        validatorConfirmations:
+          type: integer
+        requiredConfirmations:
+          type: integer
+        transitYield:
+          type: string
+          nullable: true
+        estimatedCompletion:
+          type: string
+          format: date-time
+          nullable: true
+
+    # External Service Schemas
+    NoblePool:
+      type: object
+      properties:
+        poolId:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        totalSupply:
+          type: string
+        totalAssets:
+          type: string
+        currentAPY:
+          type: number
+        maturityDate:
+          type: string
+          format: date-time
+          nullable: true
+        minimumDeposit:
+          type: string
+        maximumDeposit:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, PAUSED, MATURED]
+        riskRating:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        underlyingAssets:
+          type: array
+          items:
+            type: string
+      required:
+        - poolId
+        - name
+        - symbol
+        - totalSupply
+        - totalAssets
+        - currentAPY
+        - minimumDeposit
+        - maximumDeposit
+        - status
+        - riskRating
+        - underlyingAssets
+
+    ResolvVault:
+      type: object
+      properties:
+        vaultId:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        strategy:
+          type: string
+          enum: [DELTA_NEUTRAL, YIELD_FARMING, ARBITRAGE]
+        totalValueLocked:
+          type: string
+        currentAPY:
+          type: number
+        riskScore:
+          type: number
+        minimumDeposit:
+          type: string
+        maximumDeposit:
+          type: string
+        lockupPeriod:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, PAUSED, EMERGENCY_EXIT]
+        underlyingTokens:
+          type: array
+          items:
+            type: string
+        collateralRatio:
+          type: number
+        liquidationThreshold:
+          type: number
+      required:
+        - vaultId
+        - name
+        - symbol
+        - strategy
+        - totalValueLocked
+        - currentAPY
+        - riskScore
+        - minimumDeposit
+        - maximumDeposit
+        - lockupPeriod
+        - status
+        - underlyingTokens
+        - collateralRatio
+        - liquidationThreshold
+
+    AaveMarket:
+      type: object
+      properties:
+        marketId:
+          type: string
+        name:
+          type: string
+        chainId:
+          type: integer
+        liquidityPoolAddress:
+          type: string
+        totalLiquidity:
+          type: string
+        totalBorrowed:
+          type: string
+        liquidityRate:
+          type: number
+        borrowRate:
+          type: number
+        utilizationRate:
+          type: number
+        status:
+          type: string
+          enum: [ACTIVE, PAUSED, FROZEN]
+      required:
+        - marketId
+        - name
+        - chainId
+        - liquidityPoolAddress
+        - totalLiquidity
+        - totalBorrowed
+        - liquidityRate
+        - borrowRate
+        - utilizationRate
+        - status
+
+    # Health and Monitoring Schemas
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+        environment:
+          type: string
+        uptime:
+          type: number
+        responseTime:
+          type: number
+      required:
+        - status
+        - timestamp
+        - version
+        - environment
+        - uptime
+        - responseTime
+
+    DetailedHealthResponse:
+      allOf:
+        - $ref: '#/components/schemas/HealthResponse'
+        - type: object
+          properties:
+            dependencies:
+              type: object
+              properties:
+                database:
+                  $ref: '#/components/schemas/ServiceHealth'
+                redis:
+                  $ref: '#/components/schemas/ServiceHealth'
+                circleCCTP:
+                  $ref: '#/components/schemas/ServiceHealth'
+                noble:
+                  $ref: '#/components/schemas/ServiceHealth'
+                resolv:
+                  $ref: '#/components/schemas/ServiceHealth'
+                aave:
+                  $ref: '#/components/schemas/ServiceHealth'
+            system:
+              type: object
+              properties:
+                memoryUsage:
+                  type: object
+                cpuUsage:
+                  type: object
+                nodeVersion:
+                  type: string
+                platform:
+                  type: string
+                arch:
+                  type: string
+
+    ServiceHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        responseTime:
+          type: number
+        error:
+          type: string
+          nullable: true
+        lastChecked:
+          type: string
+          format: date-time
+      required:
+        - status
+        - responseTime
+
+    # Utility Schemas
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {}
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            totalPages:
+              type: integer
+            hasNext:
+              type: boolean
+            hasPrev:
+              type: boolean
+          required:
+            - page
+            - limit
+            - total
+            - totalPages
+            - hasNext
+            - hasPrev
+      required:
+        - data
+        - pagination
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              nullable: true
+            timestamp:
+              type: string
+              format: date-time
+          required:
+            - code
+            - message
+            - timestamp
+      required:
+        - error
+
+    StrategyComparison:
+      type: object
+      properties:
+        strategies:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/YieldStrategy'
+              - type: object
+                properties:
+                  performanceMetrics:
+                    type: object
+                    properties:
+                      volatility:
+                        type: number
+                      sharpeRatio:
+                        type: number
+                      maxDrawdown:
+                        type: string
+                      winRate:
+                        type: number
+        summary:
+          type: object
+          properties:
+            bestAPY:
+              $ref: '#/components/schemas/YieldStrategy'
+            lowestRisk:
+              $ref: '#/components/schemas/YieldStrategy'
+            bestRiskAdjusted:
+              $ref: '#/components/schemas/YieldStrategy'
+      required:
+        - strategies
+        - summary
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization endpoints
+  - name: Payments
+    description: Payment creation and management endpoints
+  - name: Yield
+    description: Yield strategy and optimization endpoints
+  - name: Cross-Chain Bridge
+    description: Cross-chain transaction endpoints
+  - name: External Services
+    description: External DeFi protocol integration endpoints
+  - name: Health
+    description: API health and monitoring endpoints

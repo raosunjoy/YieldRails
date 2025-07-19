@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YieldRails API Explorer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(45deg, #2196F3, #21CBF3);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: flex;
+            min-height: 70vh;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+            padding: 20px;
+        }
+
+        .endpoint-group {
+            margin-bottom: 25px;
+        }
+
+        .endpoint-group h3 {
+            color: #495057;
+            font-size: 1.1em;
+            margin-bottom: 12px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .endpoint-item {
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .endpoint-item:hover {
+            background: #e9ecef;
+            border-left-color: #007bff;
+        }
+
+        .endpoint-item.active {
+            background: #007bff;
+            color: white;
+            border-left-color: #0056b3;
+        }
+
+        .method-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-right: 8px;
+            min-width: 45px;
+            text-align: center;
+        }
+
+        .method-get { background: #28a745; color: white; }
+        .method-post { background: #007bff; color: white; }
+        .method-patch { background: #ffc107; color: black; }
+        .method-delete { background: #dc3545; color: white; }
+
+        .content-area {
+            flex: 1;
+            padding: 30px;
+        }
+
+        .endpoint-details {
+            display: none;
+        }
+
+        .endpoint-details.active {
+            display: block;
+        }
+
+        .endpoint-title {
+            color: #2c3e50;
+            font-size: 1.8em;
+            margin-bottom: 10px;
+        }
+
+        .endpoint-description {
+            color: #6c757d;
+            font-size: 1.1em;
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section h4 {
+            color: #495057;
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .parameter-list {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+        }
+
+        .parameter-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #007bff;
+        }
+
+        .parameter-name {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .parameter-type {
+            color: #6f42c1;
+            font-family: monospace;
+            background: #f1f3f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+
+        .parameter-required {
+            color: #dc3545;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .try-it-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 25px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            font-family: monospace;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .response-section {
+            margin-top: 20px;
+        }
+
+        .response-container {
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 6px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .status-200 { background: #28a745; color: white; }
+        .status-400 { background: #ffc107; color: black; }
+        .status-401 { background: #dc3545; color: white; }
+        .status-500 { background: #6c757d; color: white; }
+
+        .welcome-message {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+
+        .welcome-message h2 {
+            font-size: 2em;
+            margin-bottom: 15px;
+            color: #495057;
+        }
+
+        .welcome-message p {
+            font-size: 1.1em;
+            line-height: 1.6;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .auth-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .auth-section h5 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .content-area {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>YieldRails API Explorer</h1>
+            <p>Interactive documentation and testing tool for the YieldRails API</p>
+        </div>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="auth-section">
+                    <h5>🔐 Authentication</h5>
+                    <div class="form-group">
+                        <label for="apiKey">API Key:</label>
+                        <input type="password" id="apiKey" placeholder="Enter your API key">
+                    </div>
+                </div>
+
+                <div class="endpoint-group">
+                    <h3>🔐 Authentication</h3>
+                    <div class="endpoint-item" data-endpoint="auth-register">
+                        <span class="method-tag method-post">POST</span>
+                        Register User
+                    </div>
+                    <div class="endpoint-item" data-endpoint="auth-login">
+                        <span class="method-tag method-post">POST</span>
+                        Login User
+                    </div>
+                    <div class="endpoint-item" data-endpoint="auth-refresh">
+                        <span class="method-tag method-post">POST</span>
+                        Refresh Token
+                    </div>
+                </div>
+
+                <div class="endpoint-group">
+                    <h3>💳 Payments</h3>
+                    <div class="endpoint-item" data-endpoint="payments-list">
+                        <span class="method-tag method-get">GET</span>
+                        List Payments
+                    </div>
+                    <div class="endpoint-item" data-endpoint="payments-create">
+                        <span class="method-tag method-post">POST</span>
+                        Create Payment
+                    </div>
+                    <div class="endpoint-item" data-endpoint="payments-details">
+                        <span class="method-tag method-get">GET</span>
+                        Payment Details
+                    </div>
+                    <div class="endpoint-item" data-endpoint="payments-release">
+                        <span class="method-tag method-post">POST</span>
+                        Release Payment
+                    </div>
+                </div>
+
+                <div class="endpoint-group">
+                    <h3>📊 Yield Strategies</h3>
+                    <div class="endpoint-item" data-endpoint="yield-strategies">
+                        <span class="method-tag method-get">GET</span>
+                        List Strategies
+                    </div>
+                    <div class="endpoint-item" data-endpoint="yield-optimize">
+                        <span class="method-tag method-post">POST</span>
+                        Optimize Yield
+                    </div>
+                    <div class="endpoint-item" data-endpoint="yield-comparison">
+                        <span class="method-tag method-get">GET</span>
+                        Strategy Comparison
+                    </div>
+                </div>
+
+                <div class="endpoint-group">
+                    <h3>🌉 Cross-Chain Bridge</h3>
+                    <div class="endpoint-item" data-endpoint="bridge-estimate">
+                        <span class="method-tag method-post">POST</span>
+                        Estimate Bridge
+                    </div>
+                    <div class="endpoint-item" data-endpoint="bridge-transfer">
+                        <span class="method-tag method-post">POST</span>
+                        Initiate Transfer
+                    </div>
+                    <div class="endpoint-item" data-endpoint="bridge-status">
+                        <span class="method-tag method-get">GET</span>
+                        Transfer Status
+                    </div>
+                </div>
+
+                <div class="endpoint-group">
+                    <h3>🔗 External Services</h3>
+                    <div class="endpoint-item" data-endpoint="external-noble">
+                        <span class="method-tag method-get">GET</span>
+                        Noble Pools
+                    </div>
+                    <div class="endpoint-item" data-endpoint="external-resolv">
+                        <span class="method-tag method-get">GET</span>
+                        Resolv Vaults
+                    </div>
+                    <div class="endpoint-item" data-endpoint="external-aave">
+                        <span class="method-tag method-get">GET</span>
+                        Aave Markets
+                    </div>
+                </div>
+
+                <div class="endpoint-group">
+                    <h3>🏥 Health</h3>
+                    <div class="endpoint-item" data-endpoint="health-basic">
+                        <span class="method-tag method-get">GET</span>
+                        Basic Health
+                    </div>
+                    <div class="endpoint-item" data-endpoint="health-detailed">
+                        <span class="method-tag method-get">GET</span>
+                        Detailed Health
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-area">
+                <div id="welcome" class="welcome-message">
+                    <h2>Welcome to YieldRails API Explorer</h2>
+                    <p>
+                        This interactive tool allows you to explore and test the YieldRails API endpoints.
+                        Select an endpoint from the sidebar to view its documentation and try it out.
+                        You can test API calls with your own API key and see real responses.
+                    </p>
+                </div>
+
+                <!-- Authentication Endpoints -->
+                <div id="auth-register" class="endpoint-details">
+                    <h2 class="endpoint-title">POST /api/auth/register</h2>
+                    <p class="endpoint-description">Register a new user account with email/password or wallet signature</p>
+                    
+                    <div class="section">
+                        <h4>Request Body</h4>
+                        <div class="parameter-list">
+                            <div class="parameter-item">
+                                <div class="parameter-name">email <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">string</span>
+                                <p>User email address</p>
+                            </div>
+                            <div class="parameter-item">
+                                <div class="parameter-name">password <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">string</span>
+                                <p>User password (minimum 8 characters)</p>
+                            </div>
+                            <div class="parameter-item">
+                                <div class="parameter-name">name <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">string</span>
+                                <p>User full name</p>
+                            </div>
+                            <div class="parameter-item">
+                                <div class="parameter-name">userType <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">string</span>
+                                <p>Type of user account (individual, merchant)</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="try-it-section">
+                        <h4>Try it out</h4>
+                        <div class="form-group">
+                            <label>Request Body (JSON):</label>
+                            <textarea id="auth-register-body" placeholder='{
+  "email": "user@example.com",
+  "password": "securePassword123",
+  "name": "John Doe",
+  "userType": "individual"
+}'></textarea>
+                        </div>
+                        <button class="btn" onclick="makeApiCall('auth-register')">Send Request</button>
+                        <div id="auth-register-response" class="response-section" style="display: none;">
+                            <h4>Response</h4>
+                            <div class="response-container"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payments Create -->
+                <div id="payments-create" class="endpoint-details">
+                    <h2 class="endpoint-title">POST /api/payments</h2>
+                    <p class="endpoint-description">Create a yield-generating payment with specified strategy</p>
+                    
+                    <div class="section">
+                        <h4>Request Body</h4>
+                        <div class="parameter-list">
+                            <div class="parameter-item">
+                                <div class="parameter-name">amount <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">string</span>
+                                <p>Payment amount in token units</p>
+                            </div>
+                            <div class="parameter-item">
+                                <div class="parameter-name">token <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">string</span>
+                                <p>Token symbol (e.g., USDC, USDT)</p>
+                            </div>
+                            <div class="parameter-item">
+                                <div class="parameter-name">recipient <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">string</span>
+                                <p>Recipient wallet address</p>
+                            </div>
+                            <div class="parameter-item">
+                                <div class="parameter-name">yieldStrategy <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">string</span>
+                                <p>Selected yield strategy ID</p>
+                            </div>
+                            <div class="parameter-item">
+                                <div class="parameter-name">sourceChain <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">integer</span>
+                                <p>Source blockchain chain ID</p>
+                            </div>
+                            <div class="parameter-item">
+                                <div class="parameter-name">destinationChain <span class="parameter-required">required</span></div>
+                                <span class="parameter-type">integer</span>
+                                <p>Destination blockchain chain ID</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="try-it-section">
+                        <h4>Try it out</h4>
+                        <div class="form-group">
+                            <label>Request Body (JSON):</label>
+                            <textarea id="payments-create-body" placeholder='{
+  "amount": "1000.00",
+  "token": "USDC",
+  "recipient": "0x742d35Cc6C4C30C8F0b3F3f3D8e6f5e2A4c1a9e8",
+  "yieldStrategy": "noble-tbill-3m",
+  "sourceChain": 1,
+  "destinationChain": 137,
+  "memo": "Test payment"
+}'></textarea>
+                        </div>
+                        <button class="btn" onclick="makeApiCall('payments-create')">Send Request</button>
+                        <div id="payments-create-response" class="response-section" style="display: none;">
+                            <h4>Response</h4>
+                            <div class="response-container"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Yield Strategies -->
+                <div id="yield-strategies" class="endpoint-details">
+                    <h2 class="endpoint-title">GET /api/yield/strategies</h2>
+                    <p class="endpoint-description">Retrieve all available yield strategies with real-time APY data</p>
+                    
+                    <div class="section">
+                        <h4>Parameters</h4>
+                        <div class="parameter-list">
+                            <p>No parameters required for this endpoint.</p>
+                        </div>
+                    </div>
+
+                    <div class="try-it-section">
+                        <h4>Try it out</h4>
+                        <button class="btn" onclick="makeApiCall('yield-strategies')">Send Request</button>
+                        <div id="yield-strategies-response" class="response-section" style="display: none;">
+                            <h4>Response</h4>
+                            <div class="response-container"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Health Check -->
+                <div id="health-basic" class="endpoint-details">
+                    <h2 class="endpoint-title">GET /api/health</h2>
+                    <p class="endpoint-description">Get basic API health status</p>
+                    
+                    <div class="section">
+                        <h4>Parameters</h4>
+                        <div class="parameter-list">
+                            <p>No parameters required for this endpoint.</p>
+                        </div>
+                    </div>
+
+                    <div class="try-it-section">
+                        <h4>Try it out</h4>
+                        <button class="btn" onclick="makeApiCall('health-basic')">Send Request</button>
+                        <div id="health-basic-response" class="response-section" style="display: none;">
+                            <h4>Response</h4>
+                            <div class="response-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API Configuration
+        const API_BASE_URL = 'https://api.yieldrails.com';
+        
+        // Endpoint configurations
+        const endpoints = {
+            'auth-register': {
+                method: 'POST',
+                url: '/api/auth/register',
+                requiresAuth: false
+            },
+            'auth-login': {
+                method: 'POST',
+                url: '/api/auth/login',
+                requiresAuth: false
+            },
+            'payments-create': {
+                method: 'POST',
+                url: '/api/payments',
+                requiresAuth: true
+            },
+            'yield-strategies': {
+                method: 'GET',
+                url: '/api/yield/strategies',
+                requiresAuth: true
+            },
+            'health-basic': {
+                method: 'GET',
+                url: '/api/health',
+                requiresAuth: false
+            }
+        };
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click listeners to endpoint items
+            document.querySelectorAll('.endpoint-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const endpointId = this.getAttribute('data-endpoint');
+                    showEndpoint(endpointId);
+                });
+            });
+        });
+
+        function showEndpoint(endpointId) {
+            // Hide welcome message
+            document.getElementById('welcome').style.display = 'none';
+            
+            // Hide all endpoint details
+            document.querySelectorAll('.endpoint-details').forEach(detail => {
+                detail.classList.remove('active');
+            });
+            
+            // Remove active class from all sidebar items
+            document.querySelectorAll('.endpoint-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Show selected endpoint
+            const endpointElement = document.getElementById(endpointId);
+            if (endpointElement) {
+                endpointElement.classList.add('active');
+                
+                // Add active class to sidebar item
+                document.querySelector(`[data-endpoint="${endpointId}"]`).classList.add('active');
+            }
+        }
+
+        async function makeApiCall(endpointId) {
+            const endpoint = endpoints[endpointId];
+            if (!endpoint) {
+                alert('Endpoint configuration not found');
+                return;
+            }
+
+            const responseContainer = document.getElementById(`${endpointId}-response`);
+            const responseContent = responseContainer.querySelector('.response-container');
+            
+            // Show loading state
+            responseContainer.style.display = 'block';
+            responseContent.innerHTML = 'Loading...';
+
+            try {
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+
+                // Add authorization header if required
+                if (endpoint.requiresAuth) {
+                    const apiKey = document.getElementById('apiKey').value;
+                    if (!apiKey) {
+                        alert('API key is required for this endpoint');
+                        return;
+                    }
+                    headers['Authorization'] = `Bearer ${apiKey}`;
+                }
+
+                const requestOptions = {
+                    method: endpoint.method,
+                    headers: headers,
+                    mode: 'cors'
+                };
+
+                // Add request body for POST requests
+                if (endpoint.method === 'POST') {
+                    const bodyTextarea = document.getElementById(`${endpointId}-body`);
+                    if (bodyTextarea && bodyTextarea.value.trim()) {
+                        try {
+                            requestOptions.body = JSON.stringify(JSON.parse(bodyTextarea.value));
+                        } catch (e) {
+                            alert('Invalid JSON in request body');
+                            return;
+                        }
+                    }
+                }
+
+                const response = await fetch(`${API_BASE_URL}${endpoint.url}`, requestOptions);
+                const responseData = await response.json();
+
+                // Display response
+                const statusClass = `status-${Math.floor(response.status / 100) * 100}`;
+                const statusBadge = `<div class="status-badge ${statusClass}">${response.status} ${response.statusText}</div>`;
+                const formattedResponse = JSON.stringify(responseData, null, 2);
+                
+                responseContent.innerHTML = statusBadge + '<pre>' + formattedResponse + '</pre>';
+                
+            } catch (error) {
+                console.error('API call failed:', error);
+                const errorBadge = '<div class="status-badge status-500">Network Error</div>';
+                const errorMessage = JSON.stringify({
+                    error: 'Network error or CORS issue',
+                    message: error.message,
+                    note: 'This demo may not work with the live API due to CORS restrictions. Use this for documentation purposes.'
+                }, null, 2);
+                
+                responseContent.innerHTML = errorBadge + '<pre>' + errorMessage + '</pre>';
+            }
+        }
+
+        // Initialize with sample request bodies
+        document.addEventListener('DOMContentLoaded', function() {
+            const authRegisterBody = document.getElementById('auth-register-body');
+            if (authRegisterBody && !authRegisterBody.value) {
+                authRegisterBody.value = JSON.stringify({
+                    "email": "user@example.com",
+                    "password": "securePassword123",
+                    "name": "John Doe",
+                    "userType": "individual"
+                }, null, 2);
+            }
+
+            const paymentsCreateBody = document.getElementById('payments-create-body');
+            if (paymentsCreateBody && !paymentsCreateBody.value) {
+                paymentsCreateBody.value = JSON.stringify({
+                    "amount": "1000.00",
+                    "token": "USDC",
+                    "recipient": "0x742d35Cc6C4C30C8F0b3F3f3D8e6f5e2A4c1a9e8",
+                    "yieldStrategy": "noble-tbill-3m",
+                    "sourceChain": 1,
+                    "destinationChain": 137,
+                    "memo": "Test payment"
+                }, null, 2);
+            }
+        });
+    </script>
+</body>
+</html>
