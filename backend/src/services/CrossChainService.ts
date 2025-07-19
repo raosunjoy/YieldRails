@@ -8,6 +8,7 @@ import { StateSync } from './crosschain/StateSync';
 import { CrossChainMonitoring } from './crosschain/CrossChainMonitoring';
 import { ValidatorConsensus } from './crosschain/ValidatorConsensus';
 import { RealTimeUpdates } from './crosschain/RealTimeUpdates';
+import { CircleCCTPService } from './external/CircleCCTPService';
 
 export interface ChainInfo {
     chainId: string;
@@ -145,6 +146,7 @@ export class CrossChainService {
     private monitoring: CrossChainMonitoring;
     private validatorConsensus: ValidatorConsensus;
     private realTimeUpdates: RealTimeUpdates;
+    private circleCCTPService: CircleCCTPService;
 
     constructor() {
         this.prisma = new PrismaClient();
@@ -154,6 +156,7 @@ export class CrossChainService {
         this.monitoring = new CrossChainMonitoring();
         this.validatorConsensus = new ValidatorConsensus(this.prisma, redis);
         this.realTimeUpdates = new RealTimeUpdates(this.prisma, redis);
+        this.circleCCTPService = new CircleCCTPService();
         this.initializeChainConfigs();
         this.initializeLiquidityPools();
     }
@@ -248,11 +251,36 @@ export class CrossChainService {
         logger.info('Liquidity optimization completed');
     }
 
-    public async getBridgeEstimate(sourceChain: string, destinationChain: string, amount: number): Promise<BridgeEstimate> {
-        const fee = amount * 0.001;
-        const estimatedTime = this.estimateBridgeTime(sourceChain, destinationChain);
-        const estimatedYield = amount * 0.05 * (estimatedTime / (1000 * 60 * 60 * 24 * 365));
-        return { fee, estimatedTime, estimatedYield };
+    public async getBridgeEstimate(sourceChain: string, destinationChain: string, amount: number, token: string = 'USDC'): Promise<BridgeEstimate> {
+        try {
+            let fee = amount * 0.001; // Default fee calculation
+            
+            // For USDC, get fee from Circle CCTP
+            if (token === 'USDC') {
+                try {
+                    const ccptFee = await this.circleCCTPService.estimateTransferFee(
+                        sourceChain,
+                        destinationChain,
+                        amount.toString()
+                    );
+                    fee = Number(ccptFee);
+                } catch (error) {
+                    logger.warn('Failed to get Circle CCTP fee estimate, using default', { error });
+                }
+            }
+            
+            const estimatedTime = this.estimateBridgeTime(sourceChain, destinationChain);
+            const estimatedYield = amount * 0.05 * (estimatedTime / (1000 * 60 * 60 * 24 * 365));
+            
+            return { fee, estimatedTime, estimatedYield };
+        } catch (error) {
+            logger.error('Failed to get bridge estimate', { error });
+            // Fallback to default calculation
+            const fee = amount * 0.001;
+            const estimatedTime = this.estimateBridgeTime(sourceChain, destinationChain);
+            const estimatedYield = amount * 0.05 * (estimatedTime / (1000 * 60 * 60 * 24 * 365));
+            return { fee, estimatedTime, estimatedYield };
+        }
     }
 
     public async synchronizeChainState(): Promise<void> {
@@ -471,13 +499,18 @@ export class CrossChainService {
                 transitTime
             );
 
-            // Update liquidity pools
-            await this.updateLiquidityPools(
-                transaction.sourceChain,
-                transaction.destinationChain,
-                Number(transaction.sourceAmount),
-                transaction.token || 'USDC'
-            );
+            // For USDC transfers, use Circle CCTP
+            if (transaction.token === 'USDC') {
+                await this.executeCCTPTransfer(transaction, actualYield);
+            } else {
+                // For other tokens, use liquidity pools
+                await this.updateLiquidityPools(
+                    transaction.sourceChain,
+                    transaction.destinationChain,
+                    Number(transaction.sourceAmount),
+                    transaction.token || 'USDC'
+                );
+            }
 
             // Complete the transaction
             await this.prisma.crossChainTransaction.update({
@@ -505,6 +538,59 @@ export class CrossChainService {
 
         } catch (error) {
             logger.error('Settlement execution failed', { error, transactionId });
+            throw error;
+        }
+    }
+    
+    /**
+     * Execute USDC transfer using Circle CCTP
+     */
+    private async executeCCTPTransfer(transaction: CrossChainTransaction, actualYield: number): Promise<void> {
+        try {
+            logger.info('Executing Circle CCTP transfer', { 
+                transactionId: transaction.id,
+                sourceChain: transaction.sourceChain,
+                destinationChain: transaction.destinationChain
+            });
+            
+            // Calculate total amount including yield
+            const totalAmount = (
+                Number(transaction.destinationAmount) + actualYield
+            ).toString();
+            
+            // Initiate CCTP transfer
+            const ccptTransfer = await this.circleCCTPService.initiateTransfer({
+                sourceChain: transaction.sourceChain,
+                destinationChain: transaction.destinationChain,
+                amount: totalAmount,
+                sourceAddress: transaction.sourceAddress || transaction.senderAddress,
+                destinationAddress: transaction.destinationAddress || transaction.recipientAddress,
+                tokenSymbol: 'USDC',
+                reference: transaction.id
+            });
+            
+            // Update transaction with CCTP transfer ID
+            await this.prisma.crossChainTransaction.update({
+                where: { id: transaction.id },
+                data: {
+                    externalTransactionId: ccptTransfer.id,
+                    sourceTransactionHash: ccptTransfer.sourceTransactionHash,
+                    destinationTransactionHash: ccptTransfer.destinationTransactionHash,
+                    updatedAt: new Date()
+                }
+            });
+            
+            logger.info('Circle CCTP transfer initiated', { 
+                transactionId: transaction.id,
+                ccptTransferId: ccptTransfer.id,
+                status: ccptTransfer.status
+            });
+            
+        } catch (error) {
+            logger.error('Circle CCTP transfer failed', { 
+                error, 
+                transactionId: transaction.id 
+            });
             throw error;
         }
     }

@@ -1,6 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import { logger } from '../utils/logger';
+import { ChainalysisService } from './external/ChainalysisService';
+import { config } from '../config/environment';
 
 // Use singleton pattern for Prisma client
 let prisma: PrismaClient;
@@ -86,15 +88,13 @@ interface ComplianceReport {
  * Comprehensive Compliance and AML/KYC service with real integrations
  */
 export class ComplianceService {
-    private chainalysisApiKey: string;
-    private chainalysisBaseUrl: string;
+    private chainalysisService: ChainalysisService;
     private kycProvider: string;
     private sanctionsLists: string[];
 
     constructor() {
-        this.chainalysisApiKey = process.env.CHAINALYSIS_API_KEY || '';
-        this.chainalysisBaseUrl = process.env.CHAINALYSIS_BASE_URL || 'https://api.chainalysis.com';
-        this.kycProvider = process.env.KYC_PROVIDER || 'jumio';
+        this.chainalysisService = new ChainalysisService();
+        this.kycProvider = config.KYC_PROVIDER || 'jumio';
         this.sanctionsLists = ['OFAC', 'UN', 'EU', 'UK_HMT'];
     }
 
@@ -111,31 +111,20 @@ export class ComplianceService {
                 return cachedResult;
             }
 
-            // Perform Chainalysis API call
-            const chainalysisResult = await this.callChainalysisAPI(address);
-            
-            // Calculate risk score based on multiple factors
-            const riskScore = this.calculateAddressRiskScore(chainalysisResult);
-            const riskLevel = this.determineRiskLevel(riskScore);
-
-            const assessment: AddressRiskAssessment = {
-                address,
-                riskScore,
-                riskLevel,
-                sanctions: chainalysisResult.sanctions || false,
-                pep: chainalysisResult.pep || false,
-                amlFlags: chainalysisResult.flags || [],
-                source: 'chainalysis',
-                lastChecked: new Date()
-            };
+            // Use Chainalysis service to check address risk
+            const assessment = await this.chainalysisService.checkAddressRisk(address);
 
             // Cache the result
             await this.cacheAddressRisk(assessment);
 
             // Log high-risk addresses
-            if (riskLevel === 'HIGH' || riskLevel === 'VERY_HIGH') {
-                logger.warn(`High-risk address detected: ${address}, score: ${riskScore}`);
-                await this.createComplianceAlert('HIGH_RISK_ADDRESS', { address, riskScore, riskLevel });
+            if (assessment.riskLevel === 'HIGH' || assessment.riskLevel === 'VERY_HIGH') {
+                logger.warn(`High-risk address detected: ${address}, score: ${assessment.riskScore}`);
+                await this.createComplianceAlert('HIGH_RISK_ADDRESS', { 
+                    address, 
+                    riskScore: assessment.riskScore, 
+                    riskLevel: assessment.riskLevel 
+                });
             }
 
             return assessment;
@@ -246,31 +235,23 @@ export class ComplianceService {
         try {
             logger.info(`Checking sanctions lists for: ${name}`);
 
-            const matches = [];
-            let highestConfidence = 0;
+            // Use Chainalysis service to check sanctions
+            const result = await this.chainalysisService.checkSanctionsList(name, address);
 
-            // Check each sanctions list
-            for (const listName of this.sanctionsLists) {
-                const listMatches = await this.checkSpecificSanctionsList(name, listName, address);
-                matches.push(...listMatches);
-                
-                if (listMatches.length > 0) {
-                    const maxConfidence = Math.max(...listMatches.map(m => m.confidence));
-                    highestConfidence = Math.max(highestConfidence, maxConfidence);
-                }
-            }
-
-            const isMatch = matches.length > 0 && highestConfidence > 0.8;
-
-            if (isMatch) {
-                logger.warn(`Sanctions match found for: ${name}, confidence: ${highestConfidence}`);
-                await this.createComplianceAlert('SANCTIONS_MATCH', { name, address, matches, confidence: highestConfidence });
+            if (result.isMatch) {
+                logger.warn(`Sanctions match found for: ${name}, confidence: ${result.confidence}`);
+                await this.createComplianceAlert('SANCTIONS_MATCH', { 
+                    name, 
+                    address, 
+                    matches: result.matches, 
+                    confidence: result.confidence 
+                });
             }
 
             return {
-                isMatch,
-                matches,
-                confidence: highestConfidence
+                isMatch: result.isMatch,
+                matches: result.matches,
+                confidence: result.confidence
             };
 
         } catch (error) {
@@ -293,47 +274,41 @@ export class ComplianceService {
         try {
             logger.info(`Assessing transaction risk: ${transaction.transactionId}`);
 
-            // Check both addresses
-            const [fromRisk, toRisk] = await Promise.all([
-                this.checkAddress(transaction.fromAddress),
-                this.checkAddress(transaction.toAddress)
-            ]);
+            // Use Chainalysis service to check transaction risk
+            const riskAssessment = await this.chainalysisService.checkTransactionRisk({
+                transactionId: transaction.transactionId,
+                sourceAddress: transaction.fromAddress,
+                destinationAddress: transaction.toAddress,
+                amount: transaction.amount.toString(),
+                currency: transaction.currency
+            });
 
-            // Calculate transaction-specific risk factors
-            const amountRisk = this.calculateAmountRisk(transaction.amount, transaction.currency);
+            // Add velocity risk which is specific to our platform
             const velocityRisk = await this.calculateVelocityRisk(transaction.fromAddress);
-            const patternRisk = await this.calculatePatternRisk(transaction);
-
-            // Combine all risk factors
-            const combinedRiskScore = this.combineRiskScores([
-                fromRisk.riskScore,
-                toRisk.riskScore,
-                amountRisk,
-                velocityRisk,
-                patternRisk
-            ]);
-
-            const riskLevel = this.determineRiskLevel(combinedRiskScore);
-            const flags = this.generateRiskFlags(fromRisk, toRisk, amountRisk, velocityRisk, patternRisk);
-            const recommendations = this.generateRecommendations(riskLevel, flags);
-
+            
+            // Adjust risk score with velocity risk
+            const adjustedRiskScore = Math.min(
+                100, 
+                riskAssessment.riskScore + (velocityRisk > 60 ? 10 : 0)
+            );
+            
             const transactionRisk: TransactionRisk = {
                 transactionId: transaction.transactionId,
                 fromAddress: transaction.fromAddress,
                 toAddress: transaction.toAddress,
                 amount: transaction.amount,
                 currency: transaction.currency,
-                riskScore: combinedRiskScore,
-                riskLevel,
-                flags,
-                recommendations
+                riskScore: adjustedRiskScore,
+                riskLevel: this.determineRiskLevel(adjustedRiskScore),
+                flags: [...riskAssessment.flags, ...(velocityRisk > 60 ? ['HIGH_VELOCITY'] : [])],
+                recommendations: riskAssessment.recommendations
             };
 
             // Store risk assessment
             await this.storeTransactionRisk(transactionRisk);
 
             // Create alerts for high-risk transactions
-            if (riskLevel === 'HIGH' || riskLevel === 'VERY_HIGH') {
+            if (transactionRisk.riskLevel === 'HIGH' || transactionRisk.riskLevel === 'VERY_HIGH') {
                 await this.createComplianceAlert('HIGH_RISK_TRANSACTION', transactionRisk);
             }
 

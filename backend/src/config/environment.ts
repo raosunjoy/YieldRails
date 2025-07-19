@@ -58,6 +58,13 @@ const envSchema = z.object({
     CHAINALYSIS_API_KEY: z.string().optional(),
     CHAINALYSIS_API_URL: z.string().url().default('https://api.chainalysis.com'),
     
+    MOONPAY_API_KEY: z.string().optional(),
+    MOONPAY_SECRET_KEY: z.string().optional(),
+    MOONPAY_API_URL: z.string().url().default('https://api.moonpay.com'),
+    MOONPAY_WIDGET_URL: z.string().url().default('https://buy.moonpay.com'),
+    
+    KYC_PROVIDER: z.string().default('jumio'),
+    
     // Notification services
     SENDGRID_API_KEY: z.string().optional(),
     WEBHOOK_SECRET: z.string().min(32),
