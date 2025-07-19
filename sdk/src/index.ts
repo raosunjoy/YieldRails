@@ -16,6 +16,7 @@ export { PaymentService } from './services/payment';
 export { YieldService } from './services/yield';
 export { CrossChainService } from './services/crosschain';
 export { ComplianceService } from './services/compliance';
+export { ExternalService } from './services/external';
 
 // Blockchain helpers
 export { ContractHelper } from './blockchain/contract-helper';

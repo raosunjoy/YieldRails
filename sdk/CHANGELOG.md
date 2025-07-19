@@ -5,6 +5,42 @@ All notable changes to the YieldRails SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-07-19
+
+### Added - Task 35: Complete External Service Integrations
+- **External Service Integration**: Complete integration with external DeFi protocols
+  - Noble Protocol integration for T-bill yield strategies with real-time pool data
+  - Resolv Protocol integration for delta-neutral DeFi strategies with risk metrics
+  - Aave Protocol integration for lending yield strategies with market analytics
+  - Circle CCTP integration for cross-chain USDC transfers with fee estimation
+- **Service Health Monitoring**: Real-time health checks for all external services
+  - Circuit breaker pattern implementation for automatic failover
+  - Latency tracking and performance monitoring
+  - Service availability status with error reporting
+- **New ExternalService Class** with comprehensive API coverage:
+  - `getServiceHealth()` - Monitor external service status and performance
+  - `getNoblePools()` - Access T-bill investment pools with real-time APY
+  - `getResolvVaults()` - Access delta-neutral vaults with risk analytics
+  - `getAaveMarkets()` - Access lending markets with supply/borrow rates
+  - `getCircleSupportedChains()` - Cross-chain transfer capabilities
+  - Circuit breaker monitoring and reset capabilities
+- **Enhanced YieldService**: Real-time APY data integration from external protocols
+- **Comprehensive Examples**: `external-services-usage.ts` with practical integration patterns
+
+### Enhanced
+- **Real-time Data Integration**: Yield strategies now include live APY data from Noble, Resolv, and Aave
+- **Service Reliability**: Circuit breaker pattern with automatic failover and recovery
+- **Error Handling**: Comprehensive fallback mechanisms and graceful degradation
+- **Type Safety**: Complete TypeScript definitions for all external service APIs
+- **Health Monitoring**: Backend health endpoints enhanced with external service status
+
+### Technical Improvements
+- ExternalServiceManager class for centralized service management
+- Automatic retry logic with exponential backoff
+- Service health checks with configurable intervals
+- Comprehensive mock data for development and testing
+- Enhanced logging for service interactions and failures
+
 ## [0.3.0] - 2025-07-19
 
 ### Added - Task 33: Complete TypeScript SDK Development

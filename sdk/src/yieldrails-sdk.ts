@@ -9,6 +9,7 @@ import { PaymentService } from './services/payment';
 import { YieldService } from './services/yield';
 import { CrossChainService } from './services/crosschain';
 import { ComplianceService } from './services/compliance';
+import { ExternalService } from './services/external';
 import { ContractHelper } from './blockchain/contract-helper';
 import { YieldRailsContracts } from './blockchain/yieldrails-contracts';
 import { getDeploymentConfig, getAllContractAddresses } from './blockchain/deployment-config';
@@ -26,6 +27,7 @@ export class YieldRailsSDK {
   public readonly yield: YieldService;
   public readonly crosschain: CrossChainService;
   public readonly compliance: ComplianceService;
+  public readonly external: ExternalService;
   public readonly blockchain: ContractHelper;
   public readonly contracts: YieldRailsContracts;
 
@@ -39,6 +41,7 @@ export class YieldRailsSDK {
     this.yield = new YieldService(this.apiClient);
     this.crosschain = new CrossChainService(this.apiClient);
     this.compliance = new ComplianceService(this.apiClient);
+    this.external = new ExternalService(this.apiClient);
     this.blockchain = new ContractHelper();
     this.contracts = new YieldRailsContracts(this.blockchain);
 

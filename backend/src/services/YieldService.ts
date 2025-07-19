@@ -4,6 +4,7 @@ import { logger, logBusinessEvent, logPerformance } from '../utils/logger';
 import { ContractService } from './ContractService';
 import { ErrorTypes } from '../middleware/errorHandler';
 import { database } from '../config/database';
+import { externalServiceManager } from './external/ExternalServiceManager';
 
 const prisma = database.getClient();
 
@@ -425,7 +426,7 @@ export class YieldService {
     }
 
     /**
-     * Get available yield strategies
+     * Get available yield strategies with real-time data from external protocols
      */
     public async getAvailableStrategies(): Promise<any[]> {
         try {
@@ -434,22 +435,72 @@ export class YieldService {
                 orderBy: { expectedAPY: 'desc' }
             });
 
-            // Format the response
-            return strategies.map(strategy => ({
-                id: strategy.id,
-                name: strategy.name,
-                description: strategy.description,
-                protocolName: strategy.protocolName,
-                chainId: strategy.chainId,
-                strategyType: strategy.strategyType,
-                expectedAPY: strategy.expectedAPY.toNumber(),
-                actualAPY: strategy.actualAPY?.toNumber() || strategy.expectedAPY.toNumber(),
-                riskLevel: strategy.riskLevel,
-                minAmount: strategy.minAmount.toNumber(),
-                maxAmount: strategy.maxAmount?.toNumber(),
-                totalValueLocked: strategy.totalValueLocked.toNumber(),
-                isActive: strategy.isActive
-            }));
+            // Get real-time data from external protocols
+            const enhancedStrategies = await Promise.all(
+                strategies.map(async (strategy) => {
+                    let realTimeData = null;
+
+                    try {
+                        // Get real-time data based on protocol
+                        if (strategy.protocolName === 'Noble') {
+                            const services = externalServiceManager.getServices();
+                            const pools = await externalServiceManager.executeWithFailover(
+                                'noble',
+                                () => services.noble.getAvailablePools()
+                            );
+                            realTimeData = pools.find(p => p.poolId === strategy.contractAddress);
+                        } else if (strategy.protocolName === 'Resolv') {
+                            const services = externalServiceManager.getServices();
+                            const vaults = await externalServiceManager.executeWithFailover(
+                                'resolv',
+                                () => services.resolv.getAvailableVaults()
+                            );
+                            realTimeData = vaults.find(v => v.vaultId === strategy.contractAddress);
+                        } else if (strategy.protocolName === 'Aave') {
+                            const services = externalServiceManager.getServices();
+                            const markets = await externalServiceManager.executeWithFailover(
+                                'aave',
+                                () => services.aave.getAvailableMarkets()
+                            );
+                            realTimeData = markets.find(m => m.marketId === strategy.contractAddress);
+                        }
+                    } catch (error) {
+                        logger.warn(`Failed to get real-time data for strategy ${strategy.id}`, { error: error.message });
+                    }
+
+                    // Use real-time APY if available, otherwise fall back to database value
+                    const currentAPY = realTimeData?.currentAPY || 
+                                      realTimeData?.liquidityRate || 
+                                      strategy.actualAPY?.toNumber() || 
+                                      strategy.expectedAPY.toNumber();
+
+                    return {
+                        id: strategy.id,
+                        name: strategy.name,
+                        description: strategy.description,
+                        protocolName: strategy.protocolName,
+                        chainId: strategy.chainId,
+                        strategyType: strategy.strategyType,
+                        expectedAPY: strategy.expectedAPY.toNumber(),
+                        actualAPY: currentAPY,
+                        riskLevel: strategy.riskLevel,
+                        minAmount: strategy.minAmount.toNumber(),
+                        maxAmount: strategy.maxAmount?.toNumber(),
+                        totalValueLocked: realTimeData?.totalValueLocked || 
+                                         realTimeData?.totalSupply || 
+                                         realTimeData?.totalLiquidity || 
+                                         strategy.totalValueLocked.toNumber(),
+                        isActive: strategy.isActive,
+                        realTimeData: realTimeData ? {
+                            lastUpdated: new Date().toISOString(),
+                            source: strategy.protocolName,
+                            status: realTimeData.status || 'ACTIVE'
+                        } : null
+                    };
+                })
+            );
+
+            return enhancedStrategies;
         } catch (error) {
             logger.error('Failed to get available strategies:', error);
             throw error;
