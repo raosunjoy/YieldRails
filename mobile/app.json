@@ -1,0 +1,68 @@
+{
+  "name": "YieldRailsMobile",
+  "displayName": "YieldRails",
+  "description": "DeFi yield optimization and cross-chain payments on mobile",
+  "version": "1.0.0",
+  "versionCode": 1,
+  "buildNumber": 1,
+  "bundleIdentifier": "com.yieldrails.mobile",
+  "orientation": "portrait",
+  "icon": "./assets/images/icon.png",
+  "splash": {
+    "image": "./assets/images/splash.png",
+    "backgroundColor": "#1a1a2e"
+  },
+  "permissions": [
+    "CAMERA",
+    "READ_EXTERNAL_STORAGE",
+    "WRITE_EXTERNAL_STORAGE",
+    "INTERNET",
+    "ACCESS_NETWORK_STATE",
+    "ACCESS_WIFI_STATE",
+    "USE_BIOMETRIC",
+    "USE_FINGERPRINT",
+    "VIBRATE",
+    "RECEIVE_BOOT_COMPLETED",
+    "WAKE_LOCK"
+  ],
+  "android": {
+    "package": "com.yieldrails.mobile",
+    "versionCode": 1,
+    "compileSdkVersion": 34,
+    "targetSdkVersion": 34,
+    "minSdkVersion": 21,
+    "permissions": [
+      "android.permission.CAMERA",
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.WRITE_EXTERNAL_STORAGE",
+      "android.permission.INTERNET",
+      "android.permission.ACCESS_NETWORK_STATE",
+      "android.permission.ACCESS_WIFI_STATE",
+      "android.permission.USE_BIOMETRIC",
+      "android.permission.USE_FINGERPRINT",
+      "android.permission.VIBRATE",
+      "android.permission.RECEIVE_BOOT_COMPLETED",
+      "android.permission.WAKE_LOCK"
+    ],
+    "icon": "./assets/images/android/icon.png",
+    "adaptiveIcon": {
+      "foregroundImage": "./assets/images/android/adaptive-icon-foreground.png",
+      "backgroundColor": "#1a1a2e"
+    }
+  },
+  "ios": {
+    "bundleIdentifier": "com.yieldrails.mobile",
+    "buildNumber": "1",
+    "supportsTablet": true,
+    "icon": "./assets/images/ios/icon.png",
+    "infoPlist": {
+      "NSCameraUsageDescription": "This app needs camera access to scan QR codes for wallet connections and transactions",
+      "NSPhotoLibraryUsageDescription": "This app needs photo library access to save QR codes and transaction receipts",
+      "NSFaceIDUsageDescription": "This app uses Face ID for secure authentication and transaction authorization",
+      "NSLocationWhenInUseUsageDescription": "This app may use location for enhanced security features"
+    }
+  },
+  "web": {
+    "favicon": "./assets/images/favicon.png"
+  }
+}
