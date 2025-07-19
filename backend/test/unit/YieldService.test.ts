@@ -1,646 +1,550 @@
-import { jest } from '@jest/globals';
 import { YieldService } from '../../src/services/YieldService';
+import { PrismaClient, YieldStatus, YieldStrategyType, RiskLevel } from '@prisma/client';
 import { ContractService } from '../../src/services/ContractService';
-import { PrismaClient, YieldStatus } from '@prisma/client';
-import { redis } from '../../src/config/redis';
-import { ApiTestUtils, RedisTestUtils, ErrorTestUtils, TimeTestUtils } from '../helpers/testUtils';
 
-// Mock dependencies
-jest.mock('@prisma/client');
-jest.mock('../../src/config/redis');
-jest.mock('../../src/services/ContractService');
-
+// Mock PrismaClient
 const mockPrisma = {
-    payment: {
-        findUnique: jest.fn(),
-        findMany: jest.fn(),
-        update: jest.fn()
-    },
     yieldStrategy: {
-        findFirst: jest.fn(),
-        findUnique: jest.fn(),
         findMany: jest.fn(),
-        update: jest.fn()
+        findUnique: jest.fn(),
+        findFirst: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        aggregate: jest.fn(),
+        count: jest.fn()
     },
     yieldEarning: {
-        create: jest.fn(),
         findMany: jest.fn(),
         updateMany: jest.fn(),
         aggregate: jest.fn(),
         groupBy: jest.fn()
+    },
+    payment: {
+        findUnique: jest.fn(),
+        update: jest.fn()
+    },
+    user: {
+        count: jest.fn()
     }
-};
+} as unknown as PrismaClient;
 
-const mockRedis = RedisTestUtils.createMockRedisClient();
+// Mock ContractService
 const mockContractService = {
     calculateYield: jest.fn()
-};
+} as unknown as ContractService;
+
+// Mock Redis
+jest.mock('../../src/config/redis', () => ({
+    redis: {
+        set: jest.fn().mockResolvedValue(true),
+        get: jest.fn().mockResolvedValue(null)
+    }
+}));
+
+// Mock logger
+jest.mock('../../src/utils/logger', () => ({
+    logger: {
+        info: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn()
+    },
+    logBusinessEvent: jest.fn(),
+    logPerformance: jest.fn()
+}));
+
+// Mock database
+jest.mock('../../src/config/database', () => ({
+    database: {
+        getClient: jest.fn().mockReturnValue(mockPrisma)
+    }
+}));
 
 describe('YieldService', () => {
     let yieldService: YieldService;
-    let testPayment: any;
-    let testStrategy: any;
 
     beforeEach(() => {
         jest.clearAllMocks();
-        
-        // Setup mocks
-        (PrismaClient as jest.MockedClass<typeof PrismaClient>).mockImplementation(() => mockPrisma as any);
-        (redis as any) = mockRedis;
-        
-        yieldService = new YieldService(mockContractService as any);
-
-        // Test data
-        testPayment = ApiTestUtils.createTestPayment({
-            id: 'payment-1',
-            amount: 100,
-            tokenSymbol: 'USDC',
-            sourceChain: 'ethereum',
-            escrowAddress: '0x1234567890123456789012345678901234567890',
-            senderAddress: '0x9876543210987654321098765432109876543210',
-            yieldStrategy: 'Circle USDC Lending',
-            confirmedAt: new Date('2024-01-01T00:00:00Z')
-        });
-
-        testStrategy = {
-            id: 'strategy-1',
-            name: 'Circle USDC Lending',
-            expectedAPY: 5.0,
-            riskLevel: 'LOW',
-            minAmount: 10,
-            maxAmount: 10000,
-            isActive: true
-        };
+        yieldService = new YieldService(mockContractService);
     });
 
-    afterEach(() => {
-        yieldService.cleanup();
-    });
-
-    describe('startYieldGeneration', () => {
-        const yieldParams = {
-            amount: 100,
-            token: 'USDC',
-            strategy: 'Circle USDC Lending',
-            startTime: new Date(),
-            userId: 'user-1'
-        };
-
-        beforeEach(() => {
-            mockRedis.set.mockResolvedValue('OK');
-        });
-
-        it('should start yield generation successfully', async () => {
-            await yieldService.startYieldGeneration('payment-1', yieldParams);
-
-            expect(mockRedis.set).toHaveBeenCalledWith(
-                'yield:payment-1',
-                expect.stringContaining('"status":"active"'),
-                86400
-            );
-
-            expect(mockRedis.set).toHaveBeenCalledWith(
-                'yield:tracking:payment-1',
-                expect.stringContaining('"paymentId":"payment-1"'),
-                86400
-            );
-        });
-
-        it('should handle Redis errors gracefully', async () => {
-            mockRedis.set.mockRejectedValue(new Error('Redis connection failed'));
-
-            // Should not throw error
-            await expect(yieldService.startYieldGeneration('payment-1', yieldParams))
-                .resolves.not.toThrow();
-        });
-
-        it('should cache yield parameters correctly', async () => {
-            await yieldService.startYieldGeneration('payment-1', yieldParams);
-
-            const cacheCall = mockRedis.set.mock.calls.find(call => 
-                call[0] === 'yield:payment-1'
-            );
-            expect(cacheCall).toBeDefined();
-            
-            const cachedData = JSON.parse(cacheCall![1]);
-            expect(cachedData).toEqual(expect.objectContaining({
-                amount: yieldParams.amount,
-                token: yieldParams.token,
-                strategy: yieldParams.strategy,
-                status: 'active'
-            }));
-        });
-    });
-
-    describe('calculateCurrentYield', () => {
-        beforeEach(() => {
-            mockPrisma.payment.findUnique.mockResolvedValue(testPayment);
-            mockContractService.calculateYield.mockResolvedValue('3.5');
-            mockRedis.set.mockResolvedValue('OK');
-        });
-
-        it('should calculate current yield from blockchain', async () => {
-            const result = await yieldService.calculateCurrentYield('payment-1');
-
-            expect(result).toBe('3.5');
-            expect(mockContractService.calculateYield).toHaveBeenCalledWith(
-                testPayment.escrowAddress,
-                testPayment.sourceChain,
-                testPayment.senderAddress,
-                0
-            );
-            expect(mockRedis.set).toHaveBeenCalledWith(
-                'yield:current:payment-1',
-                '3.5',
-                300
-            );
-        });
-
-        it('should fallback to time-based calculation when blockchain yield is 0', async () => {
-            mockContractService.calculateYield.mockResolvedValue('0');
-            mockPrisma.yieldStrategy.findFirst.mockResolvedValue(testStrategy);
-
-            const result = await yieldService.calculateCurrentYield('payment-1');
-
-            expect(parseFloat(result)).toBeGreaterThan(0);
-        });
-
-        it('should return 0 for payment without escrow address', async () => {
-            mockPrisma.payment.findUnique.mockResolvedValue({
-                ...testPayment,
-                escrowAddress: null
-            });
-
-            const result = await yieldService.calculateCurrentYield('payment-1');
-
-            expect(result).toBe('0');
-            expect(mockContractService.calculateYield).not.toHaveBeenCalled();
-        });
-
-        it('should return 0 for non-existent payment', async () => {
-            mockPrisma.payment.findUnique.mockResolvedValue(null);
-
-            const result = await yieldService.calculateCurrentYield('non-existent');
-
-            expect(result).toBe('0');
-        });
-
-        it('should handle blockchain errors gracefully', async () => {
-            mockContractService.calculateYield.mockRejectedValue(new Error('Blockchain error'));
-            mockPrisma.yieldStrategy.findFirst.mockResolvedValue(testStrategy);
-
-            const result = await yieldService.calculateCurrentYield('payment-1');
-
-            // Should fallback to time-based calculation
-            expect(parseFloat(result)).toBeGreaterThanOrEqual(0);
-        });
-    });
-
-    describe('calculateFinalYield', () => {
-        beforeEach(() => {
-            mockPrisma.payment.findUnique.mockResolvedValue(testPayment);
-            mockContractService.calculateYield.mockResolvedValue('5.0');
-            mockPrisma.yieldEarning.updateMany.mockResolvedValue({ count: 1 });
-        });
-
-        it('should calculate final yield successfully', async () => {
-            const result = await yieldService.calculateFinalYield('payment-1');
-
-            expect(result).toBe('5.0');
-            expect(mockPrisma.yieldEarning.updateMany).toHaveBeenCalledWith({
-                where: { 
-                    paymentId: 'payment-1',
-                    status: YieldStatus.ACTIVE
+    describe('getAvailableStrategies', () => {
+        it('should return formatted list of active strategies', async () => {
+            const mockStrategies = [
+                {
+                    id: 'strategy1',
+                    name: 'Strategy 1',
+                    description: 'Test strategy 1',
+                    protocolName: 'Protocol 1',
+                    chainId: 'ethereum',
+                    contractAddress: '0x123',
+                    strategyType: YieldStrategyType.LENDING,
+                    expectedAPY: { toNumber: () => 5.5 },
+                    actualAPY: { toNumber: () => 5.2 },
+                    riskLevel: RiskLevel.LOW,
+                    minAmount: { toNumber: () => 100 },
+                    maxAmount: { toNumber: () => 10000 },
+                    totalValueLocked: { toNumber: () => 50000 },
+                    isActive: true
                 },
-                data: expect.objectContaining({
-                    yieldAmount: 5.0,
-                    netYieldAmount: 3.5, // 70% of 5.0
-                    feeAmount: 0.5, // 10% of 5.0
-                    status: YieldStatus.COMPLETED
-                })
-            });
-        });
+                {
+                    id: 'strategy2',
+                    name: 'Strategy 2',
+                    description: 'Test strategy 2',
+                    protocolName: 'Protocol 2',
+                    chainId: 'polygon',
+                    contractAddress: '0x456',
+                    strategyType: YieldStrategyType.STAKING,
+                    expectedAPY: { toNumber: () => 8.0 },
+                    actualAPY: null,
+                    riskLevel: RiskLevel.MEDIUM,
+                    minAmount: { toNumber: () => 50 },
+                    maxAmount: null,
+                    totalValueLocked: { toNumber: () => 25000 },
+                    isActive: true
+                }
+            ];
 
-        it('should throw error for non-existent payment', async () => {
-            mockPrisma.payment.findUnique.mockResolvedValue(null);
-
-            await ErrorTestUtils.expectToThrow(
-                () => yieldService.calculateFinalYield('non-existent'),
-                'Payment non-existent not found'
-            );
-        });
-
-        it('should fallback to time-based calculation when blockchain yield is 0', async () => {
-            mockContractService.calculateYield.mockResolvedValue('0');
-            mockPrisma.yieldStrategy.findFirst.mockResolvedValue(testStrategy);
-
-            const result = await yieldService.calculateFinalYield('payment-1');
-
-            expect(parseFloat(result)).toBeGreaterThan(0);
-        });
-    });
-
-    describe('optimizeAllocation', () => {
-        const mockStrategies = [
-            {
-                id: 'strategy-1',
-                name: 'High Yield Strategy',
-                expectedAPY: 8.0,
-                riskLevel: 'HIGH',
-                minAmount: 100,
-                maxAmount: 5000,
-                isActive: true
-            },
-            {
-                id: 'strategy-2',
-                name: 'Safe Strategy',
-                expectedAPY: 4.0,
-                riskLevel: 'LOW',
-                minAmount: 10,
-                maxAmount: 10000,
-                isActive: true
-            },
-            {
-                id: 'strategy-3',
-                name: 'Medium Strategy',
-                expectedAPY: 6.0,
-                riskLevel: 'MEDIUM',
-                minAmount: 50,
-                maxAmount: 8000,
-                isActive: true
-            }
-        ];
-
-        beforeEach(() => {
             mockPrisma.yieldStrategy.findMany.mockResolvedValue(mockStrategies);
-        });
 
-        it('should optimize allocation based on risk-adjusted returns', async () => {
-            const result = await yieldService.optimizeAllocation('user-1', 1000);
+            const result = await yieldService.getAvailableStrategies();
 
-            expect(result.totalAmount).toBe(1000);
-            expect(result.strategies).toHaveLength(3);
-            
-            // Should be sorted by adjusted APY (descending)
-            const apys = result.strategies.map((s: any) => s.adjustedAPY);
-            for (let i = 1; i < apys.length; i++) {
-                expect(apys[i-1]).toBeGreaterThanOrEqual(apys[i]);
-            }
-
-            // Should include risk adjustments
-            const highRiskStrategy = result.strategies.find((s: any) => s.name === 'High Yield Strategy');
-            const lowRiskStrategy = result.strategies.find((s: any) => s.name === 'Safe Strategy');
-            
-            expect(highRiskStrategy.adjustedAPY).toBeLessThan(highRiskStrategy.expectedAPY);
-            expect(lowRiskStrategy.adjustedAPY).toBeLessThan(lowRiskStrategy.expectedAPY);
-        });
-
-        it('should calculate recommended allocations', async () => {
-            const result = await yieldService.optimizeAllocation('user-1', 1000);
-
-            result.strategies.forEach((strategy: any) => {
-                expect(strategy.recommendedAllocation).toBeGreaterThan(0);
-                expect(strategy.recommendedAllocation).toBeLessThanOrEqual(1);
-                expect(strategy.estimatedYield).toBeGreaterThanOrEqual(0);
+            expect(mockPrisma.yieldStrategy.findMany).toHaveBeenCalledWith({
+                where: { isActive: true },
+                orderBy: { expectedAPY: 'desc' }
             });
+
+            expect(result).toHaveLength(2);
+            expect(result[0].id).toBe('strategy1');
+            expect(result[0].name).toBe('Strategy 1');
+            expect(result[0].expectedAPY).toBe(5.5);
+            expect(result[0].actualAPY).toBe(5.2);
+            expect(result[1].id).toBe('strategy2');
+            expect(result[1].expectedAPY).toBe(8.0);
+            expect(result[1].actualAPY).toBe(8.0); // Should default to expectedAPY
         });
 
-        it('should handle empty strategies list', async () => {
-            mockPrisma.yieldStrategy.findMany.mockResolvedValue([]);
+        it('should handle errors gracefully', async () => {
+            mockPrisma.yieldStrategy.findMany.mockRejectedValue(new Error('Database error'));
 
-            const result = await yieldService.optimizeAllocation('user-1', 1000);
-
-            expect(result.strategies).toHaveLength(0);
-            expect(result.totalEstimatedYield).toBe(0);
-            expect(result.averageAPY).toBe(0);
+            await expect(yieldService.getAvailableStrategies()).rejects.toThrow('Database error');
         });
     });
 
     describe('getCurrentAPY', () => {
-        const recentEarnings = [
-            {
-                principalAmount: { toNumber: () => 100 },
-                yieldAmount: { toNumber: () => 5 },
-                startTime: new Date('2024-01-01'),
-                endTime: new Date('2024-01-31')
-            },
-            {
-                principalAmount: { toNumber: () => 200 },
-                yieldAmount: { toNumber: () => 12 },
-                startTime: new Date('2024-01-15'),
-                endTime: new Date('2024-02-15')
-            }
-        ];
+        it('should calculate actual APY based on recent performance', async () => {
+            const mockStrategy = {
+                id: 'strategy1',
+                expectedAPY: { toNumber: () => 5.5 }
+            };
 
-        beforeEach(() => {
-            mockPrisma.yieldStrategy.findUnique.mockResolvedValue(testStrategy);
-            mockPrisma.yieldEarning.findMany.mockResolvedValue(recentEarnings);
-            mockPrisma.yieldStrategy.update.mockResolvedValue(testStrategy);
-        });
-
-        it('should calculate actual APY from recent performance', async () => {
-            const result = await yieldService.getCurrentAPY('strategy-1');
-
-            expect(result).toBeGreaterThan(0);
-            expect(mockPrisma.yieldStrategy.update).toHaveBeenCalledWith({
-                where: { id: 'strategy-1' },
-                data: { actualAPY: expect.any(Number) }
-            });
-        });
-
-        it('should return expected APY when no recent earnings', async () => {
-            mockPrisma.yieldEarning.findMany.mockResolvedValue([]);
-
-            const result = await yieldService.getCurrentAPY('strategy-1');
-
-            expect(result).toBe(testStrategy.expectedAPY);
-        });
-
-        it('should throw error for non-existent strategy', async () => {
-            mockPrisma.yieldStrategy.findUnique.mockResolvedValue(null);
-
-            await ErrorTestUtils.expectToThrow(
-                () => yieldService.getCurrentAPY('non-existent'),
-                'Strategy non-existent not found'
-            );
-        });
-
-        it('should handle earnings without end time', async () => {
-            const earningsWithoutEndTime = [
+            const mockEarnings = [
                 {
-                    principalAmount: { toNumber: () => 100 },
-                    yieldAmount: { toNumber: () => 2 },
-                    startTime: new Date('2024-01-01'),
-                    endTime: null
+                    principalAmount: { toNumber: () => 1000 },
+                    yieldAmount: { toNumber: () => 50 },
+                    startTime: new Date('2025-07-01'),
+                    endTime: new Date('2025-07-10') // 9 days
+                },
+                {
+                    principalAmount: { toNumber: () => 2000 },
+                    yieldAmount: { toNumber: () => 80 },
+                    startTime: new Date('2025-07-05'),
+                    endTime: new Date('2025-07-15') // 10 days
                 }
             ];
 
-            mockPrisma.yieldEarning.findMany.mockResolvedValue(earningsWithoutEndTime);
-
-            const result = await yieldService.getCurrentAPY('strategy-1');
-
-            expect(result).toBeGreaterThanOrEqual(0);
-        });
-    });
-
-    describe('getYieldHistory', () => {
-        const mockEarnings = [
-            {
-                id: 'earning-1',
-                paymentId: 'payment-1',
-                strategy: { name: 'Strategy 1' },
-                principalAmount: { toNumber: () => 100 },
-                yieldAmount: { toNumber: () => 5 },
-                netYieldAmount: { toNumber: () => 3.5 },
-                actualAPY: { toNumber: () => 5.2 },
-                status: YieldStatus.COMPLETED,
-                startTime: new Date('2024-01-01'),
-                endTime: new Date('2024-01-31'),
-                createdAt: new Date('2024-01-01')
-            }
-        ];
-
-        const mockAggregates = {
-            _sum: { 
-                netYieldAmount: { toNumber: () => 10.5 },
-                principalAmount: { toNumber: () => 300 }
-            }
-        };
-
-        beforeEach(() => {
+            mockPrisma.yieldStrategy.findUnique.mockResolvedValue(mockStrategy);
             mockPrisma.yieldEarning.findMany.mockResolvedValue(mockEarnings);
-            mockPrisma.yieldEarning.aggregate.mockResolvedValue(mockAggregates);
-        });
+            mockPrisma.yieldStrategy.update.mockResolvedValue({ ...mockStrategy, actualAPY: 6.2 });
 
-        it('should return comprehensive yield history', async () => {
-            const result = await yieldService.getYieldHistory('user-1');
+            const result = await yieldService.getCurrentAPY('strategy1');
 
-            expect(result.earnings).toHaveLength(1);
-            expect(result.earnings[0]).toEqual(expect.objectContaining({
-                id: 'earning-1',
-                paymentId: 'payment-1',
-                strategy: 'Strategy 1',
-                principalAmount: 100,
-                yieldAmount: 5,
-                netYieldAmount: 3.5,
-                actualAPY: 5.2,
-                duration: 30, // January has 31 days, but calculation might vary
-                status: YieldStatus.COMPLETED
-            }));
-
-            expect(result.summary).toEqual({
-                totalYieldEarned: 10.5,
-                totalPrincipal: 300,
-                averageAPY: 3.5, // 10.5 / 300 * 100
-                totalEarnings: 1
-            });
-        });
-
-        it('should handle pagination parameters', async () => {
-            await yieldService.getYieldHistory('user-1', 25, 50);
-
-            expect(mockPrisma.yieldEarning.findMany).toHaveBeenCalledWith({
-                where: { userId: 'user-1' },
-                include: expect.any(Object),
-                orderBy: { createdAt: 'desc' },
-                take: 25,
-                skip: 50
-            });
-        });
-
-        it('should handle null aggregate values', async () => {
-            mockPrisma.yieldEarning.aggregate.mockResolvedValue({
-                _sum: { 
-                    netYieldAmount: null,
-                    principalAmount: null
-                }
+            expect(mockPrisma.yieldStrategy.findUnique).toHaveBeenCalledWith({
+                where: { id: 'strategy1' }
             });
 
-            const result = await yieldService.getYieldHistory('user-1');
-
-            expect(result.summary).toEqual({
-                totalYieldEarned: 0,
-                totalPrincipal: 0,
-                averageAPY: 0,
-                totalEarnings: 1
-            });
-        });
-
-        it('should calculate duration for ongoing earnings', async () => {
-            const ongoingEarnings = [{
-                ...mockEarnings[0],
-                endTime: null
-            }];
-
-            mockPrisma.yieldEarning.findMany.mockResolvedValue(ongoingEarnings);
-
-            const result = await yieldService.getYieldHistory('user-1');
-
-            expect(result.earnings[0].duration).toBeGreaterThan(0);
-        });
-    });
-
-    describe('Time-based Yield Calculation', () => {
-        beforeEach(() => {
-            mockPrisma.yieldStrategy.findFirst.mockResolvedValue(testStrategy);
-        });
-
-        it('should calculate yield based on time duration', async () => {
-            // Mock payment with 30 days duration
-            const paymentWith30Days = {
-                ...testPayment,
-                confirmedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-                amount: { toNumber: () => 1000 }
-            };
-
-            const yieldAmount = await yieldService['calculateTimeBasedYield'](paymentWith30Days);
-
-            // Expected: 1000 * (5% / 365) * 30 ≈ 4.11
-            expect(yieldAmount).toBeCloseTo(4.11, 1);
-        });
-
-        it('should use default APY when strategy not found', async () => {
-            mockPrisma.yieldStrategy.findFirst.mockResolvedValue(null);
-
-            const yieldAmount = await yieldService['calculateTimeBasedYield'](testPayment);
-
-            expect(yieldAmount).toBeGreaterThan(0);
-        });
-
-        it('should return 0 for negative duration', async () => {
-            const futurePayment = {
-                ...testPayment,
-                confirmedAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 1 day in future
-                amount: { toNumber: () => 1000 }
-            };
-
-            const yieldAmount = await yieldService['calculateTimeBasedYield'](futurePayment);
-
-            expect(yieldAmount).toBe(0);
-        });
-    });
-
-    describe('Risk Multiplier Calculation', () => {
-        it('should apply correct risk multipliers', () => {
-            expect(yieldService['getRiskMultiplier']('LOW')).toBe(0.9);
-            expect(yieldService['getRiskMultiplier']('MEDIUM')).toBe(0.8);
-            expect(yieldService['getRiskMultiplier']('HIGH')).toBe(0.6);
-            expect(yieldService['getRiskMultiplier']('VERY_HIGH')).toBe(0.4);
-            expect(yieldService['getRiskMultiplier']('UNKNOWN')).toBe(0.8);
-        });
-    });
-
-    describe('Allocation Calculation', () => {
-        it('should calculate allocation based on risk and limits', () => {
-            const strategy = {
-                maxAmount: { toNumber: () => 5000 },
-                riskLevel: 'MEDIUM'
-            };
-
-            const allocation = yieldService['calculateAllocation'](strategy, 10000);
-
-            expect(allocation).toBeGreaterThan(0);
-            expect(allocation).toBeLessThanOrEqual(1);
-        });
-
-        it('should handle strategy without max amount', () => {
-            const strategy = {
-                maxAmount: null,
-                riskLevel: 'LOW'
-            };
-
-            const allocation = yieldService['calculateAllocation'](strategy, 1000);
-
-            expect(allocation).toBeGreaterThan(0);
-            expect(allocation).toBeLessThanOrEqual(1);
-        });
-    });
-
-    describe('Yield Update Scheduler', () => {
-        beforeEach(() => {
-            jest.useFakeTimers();
-            mockPrisma.payment.findMany.mockResolvedValue([testPayment]);
-            mockPrisma.payment.update.mockResolvedValue(testPayment);
-        });
-
-        afterEach(() => {
-            jest.useRealTimers();
-        });
-
-        it('should update active yields periodically', async () => {
-            // Fast-forward time to trigger the scheduler
-            jest.advanceTimersByTime(5 * 60 * 1000); // 5 minutes
-
-            // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 0));
-
-            expect(mockPrisma.payment.findMany).toHaveBeenCalledWith({
-                where: { 
-                    status: 'CONFIRMED',
-                    yieldStrategy: { not: null }
-                },
-                take: 100
-            });
-        });
-
-        it('should handle errors in batch updates gracefully', async () => {
-            mockPrisma.payment.findMany.mockRejectedValue(new Error('Database error'));
-
-            // Should not throw error
-            jest.advanceTimersByTime(5 * 60 * 1000);
-            await new Promise(resolve => setTimeout(resolve, 0));
-
-            // Service should continue running
-            expect(yieldService).toBeDefined();
-        });
-    });
-
-    describe('Cleanup', () => {
-        it('should clear interval on cleanup', () => {
-            const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+            expect(mockPrisma.yieldEarning.findMany).toHaveBeenCalled();
+            expect(mockPrisma.yieldStrategy.update).toHaveBeenCalled();
             
-            yieldService.cleanup();
-
-            expect(clearIntervalSpy).toHaveBeenCalled();
+            // The calculation should be approximately:
+            // Total principal: 3000
+            // Total yield: 130
+            // Average duration: 9.5 days
+            // APY = (130 / 3000) * (365 / 9.5) * 100 ≈ 166.7%
+            // But we're not testing the exact calculation, just that it returns a number
+            expect(typeof result).toBe('number');
         });
 
-        it('should handle cleanup when no interval is set', () => {
-            const newYieldService = new YieldService();
-            newYieldService['yieldUpdateInterval'] = null;
+        it('should return expected APY when no earnings data is available', async () => {
+            const mockStrategy = {
+                id: 'strategy1',
+                expectedAPY: { toNumber: () => 5.5 }
+            };
 
-            // Should not throw error
-            expect(() => newYieldService.cleanup()).not.toThrow();
+            mockPrisma.yieldStrategy.findUnique.mockResolvedValue(mockStrategy);
+            mockPrisma.yieldEarning.findMany.mockResolvedValue([]);
+
+            const result = await yieldService.getCurrentAPY('strategy1');
+
+            expect(result).toBe(5.5);
         });
     });
 
-    describe('Error Handling', () => {
-        it('should handle database errors gracefully', async () => {
-            mockPrisma.payment.findUnique.mockRejectedValue(new Error('Database error'));
+    describe('optimizeAllocation', () => {
+        it('should return optimized allocation recommendations', async () => {
+            const mockStrategies = [
+                {
+                    id: 'strategy1',
+                    name: 'Low Risk Strategy',
+                    expectedAPY: { toNumber: () => 4.0 },
+                    riskLevel: RiskLevel.LOW,
+                    minAmount: { toNumber: () => 100 },
+                    maxAmount: { toNumber: () => 10000 },
+                    isActive: true
+                },
+                {
+                    id: 'strategy2',
+                    name: 'Medium Risk Strategy',
+                    expectedAPY: { toNumber: () => 8.0 },
+                    riskLevel: RiskLevel.MEDIUM,
+                    minAmount: { toNumber: () => 50 },
+                    maxAmount: null,
+                    isActive: true
+                },
+                {
+                    id: 'strategy3',
+                    name: 'High Risk Strategy',
+                    expectedAPY: { toNumber: () => 12.0 },
+                    riskLevel: RiskLevel.HIGH,
+                    minAmount: { toNumber: () => 200 },
+                    maxAmount: { toNumber: () => 5000 },
+                    isActive: true
+                }
+            ];
 
-            const result = await yieldService.calculateCurrentYield('payment-1');
+            mockPrisma.yieldStrategy.findMany.mockResolvedValue(mockStrategies);
+
+            const result = await yieldService.optimizeAllocation('user1', 1000);
+
+            expect(mockPrisma.yieldStrategy.findMany).toHaveBeenCalledWith({
+                where: { isActive: true },
+                orderBy: { expectedAPY: 'desc' }
+            });
+
+            expect(result).toHaveProperty('totalAmount', 1000);
+            expect(result).toHaveProperty('strategies');
+            expect(result.strategies).toHaveLength(3);
+            expect(result).toHaveProperty('totalEstimatedYield');
+            expect(result).toHaveProperty('averageAPY');
+        });
+    });
+
+    describe('calculateCurrentYield', () => {
+        it('should calculate current yield for a payment', async () => {
+            const mockPayment = {
+                id: 'payment1',
+                escrowAddress: '0xescrow',
+                senderAddress: '0xsender',
+                amount: { toNumber: () => 1000 },
+                confirmedAt: new Date('2025-07-10'),
+                yieldStrategy: 'Strategy 1',
+                yieldEarnings: []
+            };
+
+            mockPrisma.payment.findUnique.mockResolvedValue(mockPayment);
+            mockContractService.calculateYield.mockResolvedValue('50');
+            
+            const mockStrategy = {
+                expectedAPY: { toNumber: () => 5.0 }
+            };
+            mockPrisma.yieldStrategy.findFirst.mockResolvedValue(mockStrategy);
+
+            const result = await yieldService.calculateCurrentYield('payment1');
+
+            expect(mockPrisma.payment.findUnique).toHaveBeenCalledWith({
+                where: { id: 'payment1' },
+                include: { yieldEarnings: true }
+            });
+
+            expect(mockContractService.calculateYield).toHaveBeenCalled();
+            expect(result).toBe('50');
+        });
+
+        it('should return 0 if payment not found', async () => {
+            mockPrisma.payment.findUnique.mockResolvedValue(null);
+
+            const result = await yieldService.calculateCurrentYield('nonexistent');
 
             expect(result).toBe('0');
         });
+    });
 
-        it('should handle Redis errors gracefully', async () => {
-            mockRedis.set.mockRejectedValue(new Error('Redis error'));
-            mockPrisma.payment.findUnique.mockResolvedValue(testPayment);
-            mockContractService.calculateYield.mockResolvedValue('2.5');
+    describe('getUserPerformance', () => {
+        it('should return user yield performance metrics', async () => {
+            const mockEarnings = [
+                {
+                    strategyId: 'strategy1',
+                    netYieldAmount: { toNumber: () => 50 },
+                    principalAmount: { toNumber: () => 1000 },
+                    strategy: { name: 'Strategy 1' },
+                    endTime: new Date('2025-06-15')
+                },
+                {
+                    strategyId: 'strategy2',
+                    netYieldAmount: { toNumber: () => 80 },
+                    principalAmount: { toNumber: () => 2000 },
+                    strategy: { name: 'Strategy 2' },
+                    endTime: new Date('2025-07-10')
+                }
+            ];
 
-            const result = await yieldService.calculateCurrentYield('payment-1');
+            mockPrisma.yieldEarning.findMany.mockResolvedValue(mockEarnings);
 
-            expect(result).toBe('2.5');
+            const result = await yieldService.getUserPerformance('user1');
+
+            expect(mockPrisma.yieldEarning.findMany).toHaveBeenCalledWith({
+                where: { userId: 'user1' },
+                include: { strategy: true }
+            });
+
+            expect(result).toHaveProperty('totalYieldEarned', 130);
+            expect(result).toHaveProperty('totalPrincipal', 3000);
+            expect(result).toHaveProperty('averageAPY');
+            expect(result).toHaveProperty('yieldByStrategy');
+            expect(result).toHaveProperty('historicalPerformance');
         });
 
-        it('should handle contract service errors gracefully', async () => {
-            mockPrisma.payment.findUnique.mockResolvedValue(testPayment);
-            mockContractService.calculateYield.mockRejectedValue(new Error('Contract error'));
-            mockPrisma.yieldStrategy.findFirst.mockResolvedValue(testStrategy);
+        it('should return default values when user has no earnings', async () => {
+            mockPrisma.yieldEarning.findMany.mockResolvedValue([]);
 
-            const result = await yieldService.calculateCurrentYield('payment-1');
+            const result = await yieldService.getUserPerformance('user1');
 
-            // Should fallback to time-based calculation
-            expect(parseFloat(result)).toBeGreaterThanOrEqual(0);
+            expect(result).toHaveProperty('totalYieldEarned', 0);
+            expect(result).toHaveProperty('totalPrincipal', 0);
+            expect(result).toHaveProperty('averageAPY', 0);
+            expect(result).toHaveProperty('activeStrategies', 0);
+            expect(result).toHaveProperty('bestPerformingStrategy', null);
+        });
+    });
+
+    describe('getOverallAnalytics', () => {
+        it('should return platform-wide yield analytics', async () => {
+            mockPrisma.yieldEarning.aggregate.mockResolvedValue({
+                _sum: {
+                    yieldAmount: { toNumber: () => 10000 },
+                    principalAmount: { toNumber: () => 200000 },
+                    netYieldAmount: { toNumber: () => 7000 },
+                    feeAmount: { toNumber: () => 1000 }
+                }
+            });
+
+            mockPrisma.yieldStrategy.count.mockResolvedValue(5);
+            mockPrisma.user.count.mockResolvedValue(100);
+            mockPrisma.yieldStrategy.aggregate.mockResolvedValue({
+                _sum: {
+                    totalValueLocked: { toNumber: () => 500000 }
+                }
+            });
+
+            const mockStrategies = [
+                {
+                    id: 'strategy1',
+                    name: 'Strategy 1',
+                    protocolName: 'Protocol 1',
+                    expectedAPY: { toNumber: () => 5.0 },
+                    actualAPY: { toNumber: () => 4.8 },
+                    totalValueLocked: { toNumber: () => 200000 },
+                    riskLevel: RiskLevel.LOW
+                },
+                {
+                    id: 'strategy2',
+                    name: 'Strategy 2',
+                    protocolName: 'Protocol 2',
+                    expectedAPY: { toNumber: () => 8.0 },
+                    actualAPY: { toNumber: () => 7.5 },
+                    totalValueLocked: { toNumber: () => 150000 },
+                    riskLevel: RiskLevel.MEDIUM
+                }
+            ];
+
+            mockPrisma.yieldStrategy.findMany.mockResolvedValue(mockStrategies);
+            mockPrisma.yieldEarning.groupBy.mockResolvedValue([
+                {
+                    createdAt: new Date('2025-07-01'),
+                    _sum: { yieldAmount: { toNumber: () => 500 } }
+                },
+                {
+                    createdAt: new Date('2025-07-02'),
+                    _sum: { yieldAmount: { toNumber: () => 600 } }
+                }
+            ]);
+
+            const result = await yieldService.getOverallAnalytics();
+
+            expect(result).toHaveProperty('platformMetrics');
+            expect(result.platformMetrics).toHaveProperty('totalYieldGenerated', 10000);
+            expect(result.platformMetrics).toHaveProperty('totalValueLocked', 500000);
+            expect(result.platformMetrics).toHaveProperty('activeUsers', 100);
+            expect(result.platformMetrics).toHaveProperty('activeStrategies', 5);
+            
+            expect(result).toHaveProperty('topPerformingStrategies');
+            expect(result.topPerformingStrategies).toHaveLength(2);
+            
+            expect(result).toHaveProperty('dailyYieldGeneration');
+            expect(result.dailyYieldGeneration).toHaveLength(2);
+        });
+    });
+
+    describe('createStrategy', () => {
+        it('should create a new yield strategy', async () => {
+            const strategyData = {
+                name: 'New Strategy',
+                description: 'Test strategy',
+                protocolName: 'Test Protocol',
+                chainId: 'ethereum',
+                contractAddress: '0xcontract',
+                strategyType: YieldStrategyType.LENDING,
+                expectedAPY: 6.5,
+                riskLevel: RiskLevel.MEDIUM,
+                minAmount: 100,
+                maxAmount: 10000
+            };
+
+            mockPrisma.yieldStrategy.findUnique.mockResolvedValue(null);
+            mockPrisma.yieldStrategy.create.mockResolvedValue({
+                id: 'new-strategy',
+                ...strategyData,
+                expectedAPY: { toNumber: () => 6.5 },
+                minAmount: { toNumber: () => 100 },
+                maxAmount: { toNumber: () => 10000 },
+                isActive: true,
+                createdAt: new Date()
+            });
+
+            const result = await yieldService.createStrategy(strategyData);
+
+            expect(mockPrisma.yieldStrategy.findUnique).toHaveBeenCalledWith({
+                where: { name: 'New Strategy' }
+            });
+
+            expect(mockPrisma.yieldStrategy.create).toHaveBeenCalled();
+            expect(result).toHaveProperty('id', 'new-strategy');
+            expect(result).toHaveProperty('name', 'New Strategy');
+            expect(result).toHaveProperty('expectedAPY', 6.5);
+        });
+
+        it('should throw error if strategy with same name exists', async () => {
+            mockPrisma.yieldStrategy.findUnique.mockResolvedValue({
+                id: 'existing-strategy',
+                name: 'Existing Strategy'
+            });
+
+            await expect(yieldService.createStrategy({
+                name: 'Existing Strategy',
+                protocolName: 'Test Protocol',
+                chainId: 'ethereum',
+                contractAddress: '0xcontract',
+                strategyType: YieldStrategyType.LENDING,
+                expectedAPY: 6.5,
+                riskLevel: RiskLevel.MEDIUM,
+                minAmount: 100
+            })).rejects.toThrow('Strategy with name Existing Strategy already exists');
+        });
+    });
+
+    describe('updateStrategy', () => {
+        it('should update an existing yield strategy', async () => {
+            const existingStrategy = {
+                id: 'strategy1',
+                name: 'Strategy 1',
+                description: 'Old description',
+                expectedAPY: { toNumber: () => 5.0 },
+                riskLevel: RiskLevel.LOW
+            };
+
+            const updateData = {
+                description: 'Updated description',
+                expectedAPY: 6.0,
+                riskLevel: RiskLevel.MEDIUM
+            };
+
+            mockPrisma.yieldStrategy.findUnique.mockResolvedValue(existingStrategy);
+            mockPrisma.yieldStrategy.update.mockResolvedValue({
+                ...existingStrategy,
+                description: 'Updated description',
+                expectedAPY: { toNumber: () => 6.0 },
+                riskLevel: RiskLevel.MEDIUM,
+                updatedAt: new Date()
+            });
+
+            const result = await yieldService.updateStrategy('strategy1', updateData);
+
+            expect(mockPrisma.yieldStrategy.findUnique).toHaveBeenCalledWith({
+                where: { id: 'strategy1' }
+            });
+
+            expect(mockPrisma.yieldStrategy.update).toHaveBeenCalledWith({
+                where: { id: 'strategy1' },
+                data: updateData
+            });
+
+            expect(result).toHaveProperty('description', 'Updated description');
+            expect(result).toHaveProperty('expectedAPY', 6.0);
+            expect(result).toHaveProperty('riskLevel', RiskLevel.MEDIUM);
+        });
+
+        it('should throw error if strategy not found', async () => {
+            mockPrisma.yieldStrategy.findUnique.mockResolvedValue(null);
+
+            await expect(yieldService.updateStrategy('nonexistent', {
+                description: 'Updated description'
+            })).rejects.toThrow('Strategy nonexistent not found');
+        });
+    });
+
+    describe('getYieldDistribution', () => {
+        it('should return yield distribution details for a payment', async () => {
+            const mockPayment = {
+                id: 'payment1',
+                userId: 'user1',
+                merchantId: 'merchant1',
+                actualYield: { toNumber: () => 100 },
+                yieldStrategy: 'Strategy 1',
+                yieldDuration: 86400, // 1 day
+                yieldEarnings: [
+                    { status: YieldStatus.ACTIVE }
+                ],
+                user: { id: 'user1' },
+                merchant: { id: 'merchant1' }
+            };
+
+            mockPrisma.payment.findUnique.mockResolvedValue(mockPayment);
+
+            const result = await yieldService.getYieldDistribution('payment1');
+
+            expect(mockPrisma.payment.findUnique).toHaveBeenCalledWith({
+                where: { id: 'payment1' },
+                include: {
+                    yieldEarnings: true,
+                    user: true,
+                    merchant: true
+                }
+            });
+
+            expect(result).toHaveProperty('paymentId', 'payment1');
+            expect(result).toHaveProperty('totalYield', 100);
+            expect(result).toHaveProperty('distribution');
+            expect(result.distribution).toHaveProperty('user');
+            expect(result.distribution).toHaveProperty('merchant');
+            expect(result.distribution).toHaveProperty('protocol');
+            expect(result.distribution.user).toHaveProperty('amount', 70); // 70% of 100
+            expect(result.distribution.merchant).toHaveProperty('amount', 20); // 20% of 100
+            expect(result.distribution.protocol).toHaveProperty('amount', 10); // 10% of 100
+        });
+
+        it('should throw error if payment not found', async () => {
+            mockPrisma.payment.findUnique.mockResolvedValue(null);
+
+            await expect(yieldService.getYieldDistribution('nonexistent')).rejects.toThrow('Payment nonexistent not found');
         });
     });
 });

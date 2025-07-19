@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { YieldService } from '../services/YieldService';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, requireRole } from '../middleware/auth';
 import { logger, logApiMetrics } from '../utils/logger';
+import { asyncHandler } from '../middleware/errorHandler';
+import { YieldStrategyType, RiskLevel } from '@prisma/client';
 
 const router = Router();
 const yieldService = new YieldService();
@@ -384,18 +386,10 @@ router.post('/payment/:paymentId/start', authMiddleware, validatePaymentId, asyn
  * GET /api/yield/analytics
  * Get overall yield analytics
  */
-router.get('/analytics', authMiddleware, async (req: Request, res: Response) => {
+router.get('/analytics', authMiddleware, requireRole(['admin']), async (req: Request, res: Response) => {
     const startTime = Date.now();
 
     try {
-        // Only admins can access overall analytics
-        if (req.user?.role !== 'admin') {
-            return res.status(403).json({
-                error: 'Forbidden',
-                message: 'Admin access required for yield analytics'
-            });
-        }
-
         const analytics = await yieldService.getOverallAnalytics();
 
         logApiMetrics('/api/yield/analytics', 'GET', 200, Date.now() - startTime, req.user?.id);
@@ -417,5 +411,166 @@ router.get('/analytics', authMiddleware, async (req: Request, res: Response) => 
         });
     }
 });
+
+/**
+ * GET /api/yield/strategies/comparison
+ * Get strategy performance comparison
+ */
+router.get('/strategies/comparison', authMiddleware, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const comparison = await yieldService.getStrategyComparison();
+
+        logApiMetrics('/api/yield/strategies/comparison', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: comparison
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error('Error getting strategy comparison:', error);
+        logApiMetrics('/api/yield/strategies/comparison', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get strategy comparison',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/yield/strategies/:strategyId/performance
+ * Get historical performance for a strategy
+ */
+router.get('/strategies/:strategyId/performance', validateStrategyId, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const { strategyId } = req.params;
+        const performance = await yieldService.getStrategyHistoricalPerformance(strategyId);
+
+        logApiMetrics('/api/yield/strategies/:id/performance', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: {
+                strategyId,
+                performance,
+                timestamp: new Date()
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error getting performance for strategy ${req.params.strategyId}:`, error);
+        logApiMetrics('/api/yield/strategies/:id/performance', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get strategy performance',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * POST /api/yield/strategies
+ * Create a new yield strategy (admin only)
+ */
+router.post('/strategies', 
+    authMiddleware, 
+    requireRole(['admin']), 
+    [
+        body('name').isString().notEmpty().withMessage('Strategy name is required'),
+        body('protocolName').isString().notEmpty().withMessage('Protocol name is required'),
+        body('chainId').isString().notEmpty().withMessage('Chain ID is required'),
+        body('contractAddress').isString().notEmpty().withMessage('Contract address is required'),
+        body('strategyType').isIn(Object.values(YieldStrategyType)).withMessage('Valid strategy type is required'),
+        body('expectedAPY').isFloat({ min: 0, max: 100 }).withMessage('Expected APY must be between 0 and 100'),
+        body('riskLevel').isIn(Object.values(RiskLevel)).withMessage('Valid risk level is required'),
+        body('minAmount').isFloat({ min: 0 }).withMessage('Minimum amount must be positive'),
+        body('maxAmount').optional().isFloat({ min: 0 }).withMessage('Maximum amount must be positive')
+    ],
+    asyncHandler(async (req: Request, res: Response) => {
+        const startTime = Date.now();
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const strategy = await yieldService.createStrategy(req.body);
+
+        logApiMetrics('/api/yield/strategies', 'POST', 201, Date.now() - startTime, req.user?.id);
+
+        res.status(201).json({
+            success: true,
+            message: 'Yield strategy created successfully',
+            data: strategy
+        });
+    })
+);
+
+/**
+ * PUT /api/yield/strategies/:strategyId
+ * Update a yield strategy (admin only)
+ */
+router.put('/strategies/:strategyId', 
+    authMiddleware, 
+    requireRole(['admin']), 
+    validateStrategyId,
+    [
+        body('description').optional().isString(),
+        body('expectedAPY').optional().isFloat({ min: 0, max: 100 }).withMessage('Expected APY must be between 0 and 100'),
+        body('riskLevel').optional().isIn(Object.values(RiskLevel)).withMessage('Valid risk level is required'),
+        body('minAmount').optional().isFloat({ min: 0 }).withMessage('Minimum amount must be positive'),
+        body('maxAmount').optional().isFloat({ min: 0 }).withMessage('Maximum amount must be positive'),
+        body('isActive').optional().isBoolean().withMessage('isActive must be a boolean')
+    ],
+    asyncHandler(async (req: Request, res: Response) => {
+        const startTime = Date.now();
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const { strategyId } = req.params;
+        const strategy = await yieldService.updateStrategy(strategyId, req.body);
+
+        logApiMetrics('/api/yield/strategies/:id', 'PUT', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            message: 'Yield strategy updated successfully',
+            data: strategy
+        });
+    })
+);
+
+/**
+ * GET /api/yield/payment/:paymentId/distribution
+ * Get yield distribution details for a payment
+ */
+router.get('/payment/:paymentId/distribution', 
+    authMiddleware, 
+    validatePaymentId,
+    asyncHandler(async (req: Request, res: Response) => {
+        const startTime = Date.now();
+        const validationError = handleValidationErrors(req, res);
+        if (validationError) return;
+
+        const { paymentId } = req.params;
+        const distribution = await yieldService.getYieldDistribution(paymentId);
+
+        logApiMetrics('/api/yield/payment/:id/distribution', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: distribution
+        });
+    })
+);
 
 export { router as yieldRouter };
