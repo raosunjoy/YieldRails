@@ -3,6 +3,7 @@ import axios from 'axios';
 import { logger } from '../utils/logger';
 import { ChainalysisService } from './external/ChainalysisService';
 import { config } from '../config/environment';
+import * as crypto from 'crypto';
 
 // Use singleton pattern for Prisma client
 let prisma: PrismaClient;
@@ -84,6 +85,30 @@ interface ComplianceReport {
     };
 }
 
+interface AuditLogEntry {
+    id: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    userId?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    data?: any;
+    createdAt: Date;
+}
+
+interface UserKYCStatus {
+    id: string;
+    kycStatus: string;
+    kycSubmittedAt?: Date;
+    kycApprovedAt?: Date;
+    documents?: Array<{
+        type: string;
+        status: string;
+        verifiedAt?: Date;
+    }>;
+}
+
 /**
  * Comprehensive Compliance and AML/KYC service with real integrations
  */
@@ -91,11 +116,15 @@ export class ComplianceService {
     private chainalysisService: ChainalysisService;
     private kycProvider: string;
     private sanctionsLists: string[];
+    private chainalysisApiKey: string;
+    private chainalysisBaseUrl: string;
 
     constructor() {
         this.chainalysisService = new ChainalysisService();
         this.kycProvider = config.KYC_PROVIDER || 'jumio';
         this.sanctionsLists = ['OFAC', 'UN', 'EU', 'UK_HMT'];
+        this.chainalysisApiKey = config.CHAINALYSIS_API_KEY || '';
+        this.chainalysisBaseUrl = config.CHAINALYSIS_API_URL || 'https://api.chainalysis.com';
     }
 
     /**
@@ -181,6 +210,12 @@ export class ComplianceService {
                     }
                 });
 
+                // Create audit log for rejected document
+                await this.createAuditLog('KYC_DOCUMENT_REJECTED', 'KYC_DOCUMENT', kycDocument.id, submission.userId, {
+                    reason: initialValidation.reason,
+                    documentType: submission.documentType
+                });
+
                 return {
                     submissionId: kycDocument.id,
                     status: 'REJECTED',
@@ -205,12 +240,14 @@ export class ComplianceService {
             if (providerResult.status === 'APPROVED') {
                 await prisma.user.update({
                     where: { id: submission.userId },
-                    data: { kycStatus: 'APPROVED' }
+                    data: { 
+                        kycStatus: 'APPROVED',
+                        kycApprovedAt: new Date()
+                    }
                 });
 
                 // Create compliance audit log
-                await this.createAuditLog('KYC_APPROVED', {
-                    userId: submission.userId,
+                await this.createAuditLog('KYC_APPROVED', 'USER', submission.userId, submission.userId, {
                     documentType: submission.documentType,
                     submissionId: kycDocument.id
                 });
@@ -227,8 +264,8 @@ export class ComplianceService {
             throw new Error('Failed to process KYC submission');
         }
     }
-
     /**
+
      * Check sanctions lists for individuals and entities
      */
     public async checkSanctionsList(name: string, address?: string): Promise<{ isMatch: boolean; matches: any[]; confidence: number }> {
@@ -245,6 +282,14 @@ export class ComplianceService {
                     address, 
                     matches: result.matches, 
                     confidence: result.confidence 
+                });
+
+                // Create audit log for sanctions match
+                await this.createAuditLog('SANCTIONS_MATCH_DETECTED', 'SANCTIONS_CHECK', crypto.randomUUID(), null, {
+                    name,
+                    address,
+                    confidence: result.confidence,
+                    matchCount: result.matches.length
                 });
             }
 
@@ -310,6 +355,13 @@ export class ComplianceService {
             // Create alerts for high-risk transactions
             if (transactionRisk.riskLevel === 'HIGH' || transactionRisk.riskLevel === 'VERY_HIGH') {
                 await this.createComplianceAlert('HIGH_RISK_TRANSACTION', transactionRisk);
+                
+                // Create audit log for high-risk transaction
+                await this.createAuditLog('HIGH_RISK_TRANSACTION_DETECTED', 'TRANSACTION', transaction.transactionId, null, {
+                    riskScore: transactionRisk.riskScore,
+                    riskLevel: transactionRisk.riskLevel,
+                    flags: transactionRisk.flags
+                });
             }
 
             return transactionRisk;
@@ -353,6 +405,13 @@ export class ComplianceService {
 
             // Store report for audit purposes
             await this.storeComplianceReport(report);
+
+            // Create audit log for report generation
+            await this.createAuditLog('COMPLIANCE_REPORT_GENERATED', 'COMPLIANCE_REPORT', reportId, null, {
+                type,
+                startDate,
+                endDate
+            });
 
             return report;
 
@@ -407,11 +466,202 @@ export class ComplianceService {
 
             const isCompliant = issues.length === 0;
 
+            // Store merchant compliance check result
+            await prisma.merchantComplianceCheck.create({
+                data: {
+                    id: crypto.randomUUID(),
+                    merchantId,
+                    checkType: 'FULL',
+                    status: isCompliant ? 'COMPLIANT' : 'NON_COMPLIANT',
+                    issues: JSON.stringify(issues),
+                    recommendations: JSON.stringify(recommendations),
+                    metadata: JSON.stringify({
+                        suspiciousPatterns,
+                        jurisdictionIssues
+                    }),
+                    createdAt: new Date()
+                }
+            });
+
+            // Create audit log for merchant compliance check
+            await this.createAuditLog('MERCHANT_COMPLIANCE_CHECK', 'MERCHANT', merchantId, null, {
+                isCompliant,
+                issueCount: issues.length
+            });
+
             return { isCompliant, issues, recommendations };
 
         } catch (error) {
             logger.error(`Error checking merchant compliance:`, error);
             throw new Error('Failed to check merchant compliance');
+        }
+    } 
+   /**
+     * Get user KYC status
+     */
+    public async getUserKYCStatus(userId: string): Promise<UserKYCStatus | null> {
+        try {
+            logger.info(`Getting KYC status for user: ${userId}`);
+
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    kycStatus: true,
+                    kYCDocuments: {
+                        select: {
+                            id: true,
+                            documentType: true,
+                            verificationStatus: true,
+                            submittedAt: true,
+                            reviewedAt: true
+                        },
+                        orderBy: {
+                            submittedAt: 'desc'
+                        },
+                        take: 5
+                    }
+                }
+            });
+
+            if (!user) {
+                return null;
+            }
+
+            // Format documents for response
+            const documents = user.kYCDocuments.map(doc => ({
+                type: doc.documentType.toLowerCase(),
+                status: doc.verificationStatus.toLowerCase(),
+                verifiedAt: doc.reviewedAt
+            }));
+
+            // Find the most recent submission date
+            const kycSubmittedAt = user.kYCDocuments.length > 0 
+                ? user.kYCDocuments[0].submittedAt 
+                : undefined;
+
+            // Find the most recent approval date
+            const approvedDoc = user.kYCDocuments.find(doc => doc.verificationStatus === 'APPROVED');
+            const kycApprovedAt = approvedDoc ? approvedDoc.reviewedAt : undefined;
+
+            return {
+                id: user.id,
+                kycStatus: user.kycStatus || 'PENDING',
+                kycSubmittedAt,
+                kycApprovedAt,
+                documents
+            };
+
+        } catch (error) {
+            logger.error(`Error getting user KYC status:`, error);
+            throw new Error('Failed to get user KYC status');
+        }
+    }
+
+    /**
+     * Upload KYC document
+     */
+    public async uploadDocument(userId: string, documentType: string, documentBase64: string, fileName: string): Promise<string> {
+        try {
+            logger.info(`Uploading document for user: ${userId}, type: ${documentType}`);
+
+            // Validate document format and size
+            this.validateDocumentFormat(documentBase64, fileName);
+
+            // In a real implementation, we would upload to S3 or similar storage
+            // For now, we'll simulate a successful upload
+            const documentUrl = `https://storage.example.com/documents/${userId}/${documentType}/${Date.now()}_${fileName}`;
+
+            // Create document record in database
+            await prisma.kYCDocument.create({
+                data: {
+                    id: crypto.randomUUID(),
+                    userId,
+                    documentType: documentType.toUpperCase() as any,
+                    documentNumber: `DOC_${Date.now()}`,
+                    documentUrl,
+                    verificationStatus: 'PENDING',
+                    submittedAt: new Date()
+                }
+            });
+
+            // Create audit log for document upload
+            await this.createAuditLog('KYC_DOCUMENT_UPLOADED', 'USER', userId, userId, {
+                documentType,
+                fileName
+            });
+
+            return documentUrl;
+
+        } catch (error) {
+            logger.error(`Error uploading document:`, error);
+            throw new Error('Failed to upload document');
+        }
+    }
+
+    /**
+     * Get compliance audit trail
+     */
+    public async getAuditTrail(
+        startDate: Date,
+        endDate: Date,
+        userId?: string,
+        action?: string,
+        limit: number = 50,
+        offset: number = 0
+    ): Promise<{ total: number; entries: AuditLogEntry[] }> {
+        try {
+            logger.info(`Getting audit trail from ${startDate} to ${endDate}`);
+
+            // Build query filters
+            const filters: any = {
+                createdAt: {
+                    gte: startDate,
+                    lte: endDate
+                }
+            };
+
+            if (userId) {
+                filters.userId = userId;
+            }
+
+            if (action) {
+                filters.action = action;
+            }
+
+            // Get total count
+            const total = await prisma.auditLog.count({
+                where: filters
+            });
+
+            // Get audit log entries
+            const entries = await prisma.auditLog.findMany({
+                where: filters,
+                orderBy: {
+                    createdAt: 'desc'
+                },
+                skip: offset,
+                take: limit
+            });
+
+            return {
+                total,
+                entries: entries.map(entry => ({
+                    id: entry.id,
+                    action: entry.action,
+                    entityType: entry.entityType,
+                    entityId: entry.entityId,
+                    userId: entry.userId || undefined,
+                    ipAddress: entry.ipAddress || undefined,
+                    userAgent: entry.userAgent || undefined,
+                    data: entry.data ? JSON.parse(entry.data as string) : undefined,
+                    createdAt: entry.createdAt
+                }))
+            };
+
+        } catch (error) {
+            logger.error(`Error getting audit trail:`, error);
+            throw new Error('Failed to get audit trail');
         }
     }
 
@@ -453,9 +703,8 @@ export class ComplianceService {
             categories: riskScore > 80 ? ['exchange', 'mixer'] : ['wallet'],
             lastSeen: new Date().toISOString()
         };
-    }
-
-    private calculateAddressRiskScore(chainalysisData: any): number {
+    }   
+ private calculateAddressRiskScore(chainalysisData: any): number {
         let score = chainalysisData.riskScore || 0;
         
         // Adjust based on flags
@@ -475,13 +724,70 @@ export class ComplianceService {
     }
 
     private async getCachedAddressRisk(address: string): Promise<AddressRiskAssessment | null> {
-        // Implementation would check Redis cache or database
-        return null;
+        try {
+            // Check database cache
+            const cachedAssessment = await prisma.addressRiskAssessment.findFirst({
+                where: {
+                    address,
+                    expiresAt: {
+                        gt: new Date()
+                    }
+                }
+            });
+
+            if (!cachedAssessment) {
+                return null;
+            }
+
+            return {
+                address: cachedAssessment.address,
+                riskScore: cachedAssessment.riskScore,
+                riskLevel: cachedAssessment.riskLevel as 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY_HIGH',
+                sanctions: cachedAssessment.sanctions,
+                pep: cachedAssessment.pep,
+                amlFlags: JSON.parse(cachedAssessment.amlFlags as string),
+                source: cachedAssessment.source,
+                lastChecked: cachedAssessment.createdAt
+            };
+        } catch (error) {
+            logger.error('Error getting cached address risk:', error);
+            return null;
+        }
     }
 
     private async cacheAddressRisk(assessment: AddressRiskAssessment): Promise<void> {
-        // Implementation would store in Redis cache with TTL
-        logger.debug(`Caching address risk assessment: ${assessment.address}`);
+        try {
+            // Store in database cache
+            await prisma.addressRiskAssessment.upsert({
+                where: {
+                    address: assessment.address
+                },
+                update: {
+                    riskScore: assessment.riskScore,
+                    riskLevel: assessment.riskLevel,
+                    sanctions: assessment.sanctions,
+                    pep: assessment.pep,
+                    amlFlags: JSON.stringify(assessment.amlFlags),
+                    source: assessment.source,
+                    metadata: JSON.stringify({}),
+                    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+                },
+                create: {
+                    id: crypto.randomUUID(),
+                    address: assessment.address,
+                    riskScore: assessment.riskScore,
+                    riskLevel: assessment.riskLevel,
+                    sanctions: assessment.sanctions,
+                    pep: assessment.pep,
+                    amlFlags: JSON.stringify(assessment.amlFlags),
+                    source: assessment.source,
+                    metadata: JSON.stringify({}),
+                    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+                }
+            });
+        } catch (error) {
+            logger.error('Error caching address risk:', error);
+        }
     }
 
     private isCacheValid(lastChecked: Date): boolean {
@@ -500,7 +806,28 @@ export class ComplianceService {
             throw new Error('Name fields are required');
         }
         
-        // Additional validation logic
+        // Validate date of birth
+        if (!submission.dateOfBirth) {
+            throw new Error('Date of birth is required');
+        }
+        
+        try {
+            const dob = new Date(submission.dateOfBirth);
+            const now = new Date();
+            const age = now.getFullYear() - dob.getFullYear();
+            
+            // Basic age validation
+            if (age < 18 || age > 120) {
+                throw new Error('Invalid date of birth');
+            }
+        } catch (error) {
+            throw new Error('Invalid date of birth format');
+        }
+        
+        // Validate address
+        if (!submission.address || submission.address.length < 5) {
+            throw new Error('Valid address is required');
+        }
     }
 
     private async validateDocument(submission: KYCSubmission): Promise<{ isValid: boolean; reason?: string }> {
@@ -509,37 +836,99 @@ export class ComplianceService {
             return { isValid: false, reason: 'Document number too short' };
         }
         
-        // Additional document validation logic
+        // Check document format
+        if (submission.documentUrl) {
+            const validExtensions = ['.jpg', '.jpeg', '.png', '.pdf'];
+            const hasValidExtension = validExtensions.some(ext => 
+                submission.documentUrl!.toLowerCase().endsWith(ext)
+            );
+            
+            if (!hasValidExtension) {
+                return { isValid: false, reason: 'Invalid document format' };
+            }
+        }
+        
+        // Check for suspicious patterns in document number
+        const suspiciousPatterns = ['00000', '11111', '12345', 'ABCDE', 'FAKE'];
+        if (suspiciousPatterns.some(pattern => submission.documentNumber.includes(pattern))) {
+            return { isValid: false, reason: 'Suspicious document number pattern' };
+        }
+        
         return { isValid: true };
     }
 
     private async submitToKYCProvider(submission: KYCSubmission): Promise<{ status: string; notes?: string; estimatedProcessingTime: string }> {
-        // Mock KYC provider integration
+        // In a real implementation, we would call the KYC provider API
         logger.info(`Submitting to KYC provider: ${this.kycProvider}`);
         
         // Simulate processing time
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Mock approval based on document type
-        const approvalRate = submission.documentType === 'PASSPORT' ? 0.9 : 0.8;
+        // Mock approval based on document type and other factors
+        let approvalRate = 0.7; // Default approval rate
+        
+        // Adjust based on document type
+        if (submission.documentType === 'PASSPORT') {
+            approvalRate = 0.9;
+        } else if (submission.documentType === 'DRIVERS_LICENSE') {
+            approvalRate = 0.8;
+        }
+        
+        // Adjust based on document number length (longer is better)
+        if (submission.documentNumber.length > 8) {
+            approvalRate += 0.05;
+        }
+        
+        // Random factor
         const isApproved = Math.random() < approvalRate;
         
-        return {
-            status: isApproved ? 'APPROVED' : 'PENDING',
-            notes: isApproved ? 'Document verified successfully' : 'Manual review required',
-            estimatedProcessingTime: isApproved ? 'Immediate' : '24-48 hours'
-        };
+        // For some submissions, put them in manual review
+        const isManualReview = !isApproved && Math.random() < 0.7;
+        
+        if (isApproved) {
+            return {
+                status: 'APPROVED',
+                notes: 'Document verified successfully',
+                estimatedProcessingTime: 'Immediate'
+            };
+        } else if (isManualReview) {
+            return {
+                status: 'PENDING',
+                notes: 'Manual review required',
+                estimatedProcessingTime: '24-48 hours'
+            };
+        } else {
+            return {
+                status: 'REJECTED',
+                notes: 'Document verification failed',
+                estimatedProcessingTime: 'Immediate'
+            };
+        }
     }
 
     private async checkSpecificSanctionsList(name: string, listName: string, address?: string): Promise<any[]> {
-        // Mock sanctions list check
+        // In a real implementation, we would check against actual sanctions lists
+        // For now, we'll use a simple mock implementation
         const matches = [];
         
         // Simple name matching (in real implementation, use fuzzy matching)
-        const suspiciousNames = ['John Doe', 'Jane Smith', 'Bad Actor'];
-        const confidence = suspiciousNames.includes(name) ? 0.95 : 0.0;
+        const suspiciousNames = ['John Doe', 'Jane Smith', 'Bad Actor', 'Sanctioned Person', 'Vladimir Putin', 'Kim Jong Un'];
         
-        if (confidence > 0.8) {
+        // Calculate confidence based on exact or partial match
+        let confidence = 0;
+        if (suspiciousNames.includes(name)) {
+            confidence = 0.95; // Exact match
+        } else {
+            // Check for partial matches
+            for (const suspiciousName of suspiciousNames) {
+                if (name.toLowerCase().includes(suspiciousName.toLowerCase())) {
+                    confidence = 0.7; // Partial match
+                    break;
+                }
+            }
+        }
+        
+        if (confidence > 0.5) {
             matches.push({
                 name,
                 listName,
@@ -564,43 +953,53 @@ export class ComplianceService {
     }
 
     private async calculateVelocityRisk(address: string): Promise<number> {
-        // Check transaction velocity for the address
-        const recentTransactions = await prisma.payment.count({
-            where: {
-                senderAddress: address,
-                createdAt: {
-                    gte: new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24 hours
+        try {
+            // Check transaction velocity for the address
+            const recentTransactions = await prisma.payment.count({
+                where: {
+                    senderAddress: address,
+                    createdAt: {
+                        gte: new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24 hours
+                    }
                 }
-            }
-        });
-        
-        if (recentTransactions > 50) return 80;
-        if (recentTransactions > 20) return 60;
-        if (recentTransactions > 10) return 40;
-        return 20;
+            });
+            
+            if (recentTransactions > 50) return 80;
+            if (recentTransactions > 20) return 60;
+            if (recentTransactions > 10) return 40;
+            return 20;
+        } catch (error) {
+            logger.error('Error calculating velocity risk:', error);
+            return 20; // Default medium-low risk
+        }
     }
 
     private async calculatePatternRisk(transaction: any): Promise<number> {
-        // Analyze transaction patterns
-        let risk = 0;
-        
-        // Round number amounts are suspicious
-        if (transaction.amount % 1000 === 0) risk += 20;
-        
-        // Same amount repeated transactions
-        const sameAmountCount = await prisma.payment.count({
-            where: {
-                senderAddress: transaction.fromAddress,
-                amount: transaction.amount,
-                createdAt: {
-                    gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // Last 7 days
+        try {
+            // Analyze transaction patterns
+            let risk = 0;
+            
+            // Round number amounts are suspicious
+            if (transaction.amount % 1000 === 0) risk += 20;
+            
+            // Same amount repeated transactions
+            const sameAmountCount = await prisma.payment.count({
+                where: {
+                    senderAddress: transaction.fromAddress,
+                    amount: transaction.amount,
+                    createdAt: {
+                        gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // Last 7 days
+                    }
                 }
-            }
-        });
-        
-        if (sameAmountCount > 5) risk += 30;
-        
-        return Math.min(risk, 100);
+            });
+            
+            if (sameAmountCount > 5) risk += 30;
+            
+            return Math.min(risk, 100);
+        } catch (error) {
+            logger.error('Error calculating pattern risk:', error);
+            return 0;
+        }
     }
 
     private combineRiskScores(scores: number[]): number {
@@ -657,137 +1056,359 @@ export class ComplianceService {
     }
 
     private async storeTransactionRisk(risk: TransactionRisk): Promise<void> {
-        // Store in database for audit and analysis
-        logger.debug(`Storing transaction risk assessment: ${risk.transactionId}`);
+        try {
+            // Store in database for audit and analysis
+            await prisma.transactionRiskAssessment.create({
+                data: {
+                    id: crypto.randomUUID(),
+                    transactionId: risk.transactionId,
+                    fromAddress: risk.fromAddress,
+                    toAddress: risk.toAddress,
+                    amount: risk.amount,
+                    currency: risk.currency,
+                    riskScore: risk.riskScore,
+                    riskLevel: risk.riskLevel,
+                    flags: JSON.stringify(risk.flags),
+                    recommendations: JSON.stringify(risk.recommendations),
+                    metadata: JSON.stringify({}),
+                    createdAt: new Date()
+                }
+            });
+        } catch (error) {
+            logger.error('Error storing transaction risk assessment:', error);
+        }
     }
 
     private async createComplianceAlert(type: string, data: any): Promise<void> {
-        logger.warn(`Compliance alert: ${type}`, data);
-        // Implementation would create alerts in monitoring system
+        try {
+            // Determine severity based on alert type
+            let severity = 'MEDIUM';
+            if (type === 'SANCTIONS_MATCH' || type === 'HIGH_RISK_TRANSACTION') {
+                severity = 'HIGH';
+            } else if (type === 'SUSPICIOUS_PATTERN') {
+                severity = 'LOW';
+            }
+            
+            // Create alert in database
+            await prisma.complianceAlert.create({
+                data: {
+                    id: crypto.randomUUID(),
+                    alertType: type,
+                    severity,
+                    title: this.getAlertTitle(type),
+                    description: this.getAlertDescription(type, data),
+                    data: JSON.stringify(data),
+                    status: 'OPEN',
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                }
+            });
+            
+            logger.warn(`Compliance alert created: ${type}`, { severity, data });
+        } catch (error) {
+            logger.error('Error creating compliance alert:', error);
+        }
     }
 
-    private async createAuditLog(action: string, data: any): Promise<void> {
-        logger.info(`Audit log: ${action}`, data);
-        // Implementation would store in audit log table
+    private getAlertTitle(type: string): string {
+        switch (type) {
+            case 'HIGH_RISK_ADDRESS':
+                return 'High-Risk Address Detected';
+            case 'HIGH_RISK_TRANSACTION':
+                return 'High-Risk Transaction Detected';
+            case 'SANCTIONS_MATCH':
+                return 'Sanctions List Match Detected';
+            case 'SUSPICIOUS_PATTERN':
+                return 'Suspicious Transaction Pattern Detected';
+            default:
+                return 'Compliance Alert';
+        }
+    }
+
+    private getAlertDescription(type: string, data: any): string {
+        switch (type) {
+            case 'HIGH_RISK_ADDRESS':
+                return `Address ${data.address} has a risk score of ${data.riskScore} (${data.riskLevel})`;
+            case 'HIGH_RISK_TRANSACTION':
+                return `Transaction ${data.transactionId} has a risk score of ${data.riskScore} (${data.riskLevel})`;
+            case 'SANCTIONS_MATCH':
+                return `Name "${data.name}" matched sanctions list with confidence ${data.confidence}`;
+            case 'SUSPICIOUS_PATTERN':
+                return `Suspicious pattern detected: ${data.pattern}`;
+            default:
+                return 'Compliance issue detected';
+        }
+    }
+
+    private async createAuditLog(action: string, entityType: string, entityId: string, userId?: string | null, data?: any): Promise<void> {
+        try {
+            await prisma.auditLog.create({
+                data: {
+                    id: crypto.randomUUID(),
+                    action,
+                    entityType,
+                    entityId,
+                    userId: userId || null,
+                    data: data ? JSON.stringify(data) : null,
+                    createdAt: new Date()
+                }
+            });
+        } catch (error) {
+            logger.error('Error creating audit log:', error);
+        }
     }
 
     private async getTransactionStats(startDate: Date, endDate: Date): Promise<any> {
-        const totalTransactions = await prisma.payment.count({
-            where: {
-                createdAt: { gte: startDate, lte: endDate }
-            }
-        });
-        
-        const approvedTransactions = await prisma.payment.count({
-            where: {
-                createdAt: { gte: startDate, lte: endDate },
-                status: 'COMPLETED'
-            }
-        });
-        
-        const rejectedTransactions = await prisma.payment.count({
-            where: {
-                createdAt: { gte: startDate, lte: endDate },
-                status: 'FAILED'
-            }
-        });
-        
-        return {
-            totalTransactions,
-            flaggedTransactions: Math.round(totalTransactions * 0.05), // Mock 5% flagged
-            approvedTransactions,
-            rejectedTransactions,
-            pendingReview: totalTransactions - approvedTransactions - rejectedTransactions
-        };
+        try {
+            const totalTransactions = await prisma.payment.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate }
+                }
+            });
+            
+            const approvedTransactions = await prisma.payment.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate },
+                    status: 'COMPLETED'
+                }
+            });
+            
+            const rejectedTransactions = await prisma.payment.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate },
+                    status: 'FAILED'
+                }
+            });
+            
+            // Get flagged transactions from risk assessments
+            const flaggedTransactions = await prisma.transactionRiskAssessment.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate },
+                    riskLevel: { in: ['HIGH', 'VERY_HIGH'] }
+                }
+            });
+            
+            return {
+                totalTransactions,
+                flaggedTransactions,
+                approvedTransactions,
+                rejectedTransactions,
+                pendingReview: totalTransactions - approvedTransactions - rejectedTransactions
+            };
+        } catch (error) {
+            logger.error('Error getting transaction stats:', error);
+            
+            // Return mock data on error
+            return {
+                totalTransactions: 0,
+                flaggedTransactions: 0,
+                approvedTransactions: 0,
+                rejectedTransactions: 0,
+                pendingReview: 0
+            };
+        }
     }
 
     private async getKYCStats(startDate: Date, endDate: Date): Promise<any> {
-        const totalSubmissions = await prisma.kYCDocument.count({
-            where: {
-                submittedAt: { gte: startDate, lte: endDate }
-            }
-        });
-        
-        const approved = await prisma.kYCDocument.count({
-            where: {
-                submittedAt: { gte: startDate, lte: endDate },
-                verificationStatus: 'APPROVED'
-            }
-        });
-        
-        const rejected = await prisma.kYCDocument.count({
-            where: {
-                submittedAt: { gte: startDate, lte: endDate },
-                verificationStatus: 'REJECTED'
-            }
-        });
-        
-        return {
-            totalSubmissions,
-            approved,
-            rejected,
-            pending: totalSubmissions - approved - rejected
-        };
+        try {
+            const totalSubmissions = await prisma.kYCDocument.count({
+                where: {
+                    submittedAt: { gte: startDate, lte: endDate }
+                }
+            });
+            
+            const approved = await prisma.kYCDocument.count({
+                where: {
+                    submittedAt: { gte: startDate, lte: endDate },
+                    verificationStatus: 'APPROVED'
+                }
+            });
+            
+            const rejected = await prisma.kYCDocument.count({
+                where: {
+                    submittedAt: { gte: startDate, lte: endDate },
+                    verificationStatus: 'REJECTED'
+                }
+            });
+            
+            return {
+                totalSubmissions,
+                approved,
+                rejected,
+                pending: totalSubmissions - approved - rejected
+            };
+        } catch (error) {
+            logger.error('Error getting KYC stats:', error);
+            
+            // Return mock data on error
+            return {
+                totalSubmissions: 0,
+                approved: 0,
+                rejected: 0,
+                pending: 0
+            };
+        }
     }
 
     private async getAMLStats(startDate: Date, endDate: Date): Promise<any> {
-        // Mock AML statistics
-        const totalChecks = await prisma.payment.count({
-            where: {
-                createdAt: { gte: startDate, lte: endDate }
-            }
-        });
-        
-        return {
-            totalChecks,
-            passed: Math.round(totalChecks * 0.92),
-            flagged: Math.round(totalChecks * 0.07),
-            highRisk: Math.round(totalChecks * 0.01)
-        };
+        try {
+            // Get AML statistics from risk assessments
+            const totalChecks = await prisma.transactionRiskAssessment.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate }
+                }
+            });
+            
+            const flagged = await prisma.transactionRiskAssessment.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate },
+                    riskLevel: { in: ['MEDIUM', 'HIGH', 'VERY_HIGH'] }
+                }
+            });
+            
+            const highRisk = await prisma.transactionRiskAssessment.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate },
+                    riskLevel: { in: ['HIGH', 'VERY_HIGH'] }
+                }
+            });
+            
+            return {
+                totalChecks,
+                passed: totalChecks - flagged,
+                flagged,
+                highRisk
+            };
+        } catch (error) {
+            logger.error('Error getting AML stats:', error);
+            
+            // Return mock data on error
+            return {
+                totalChecks: 0,
+                passed: 0,
+                flagged: 0,
+                highRisk: 0
+            };
+        }
     }
 
     private async getSanctionsStats(startDate: Date, endDate: Date): Promise<any> {
-        // Mock sanctions statistics
-        const totalChecks = await prisma.payment.count({
-            where: {
-                createdAt: { gte: startDate, lte: endDate }
-            }
-        });
-        
-        return {
-            totalChecks,
-            clear: Math.round(totalChecks * 0.998),
-            matches: Math.round(totalChecks * 0.001),
-            falsePositives: Math.round(totalChecks * 0.001)
-        };
+        try {
+            // Get sanctions statistics from alerts
+            const totalChecks = await prisma.complianceAlert.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate },
+                    alertType: { in: ['SANCTIONS_CHECK', 'SANCTIONS_MATCH'] }
+                }
+            });
+            
+            const matches = await prisma.complianceAlert.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate },
+                    alertType: 'SANCTIONS_MATCH'
+                }
+            });
+            
+            // Get false positives (matches that were later marked as false positives)
+            const falsePositives = await prisma.complianceAlert.count({
+                where: {
+                    createdAt: { gte: startDate, lte: endDate },
+                    alertType: 'SANCTIONS_MATCH',
+                    status: 'FALSE_POSITIVE'
+                }
+            });
+            
+            return {
+                totalChecks,
+                clear: totalChecks - matches,
+                matches,
+                falsePositives
+            };
+        } catch (error) {
+            logger.error('Error getting sanctions stats:', error);
+            
+            // Return mock data on error
+            return {
+                totalChecks: 0,
+                clear: 0,
+                matches: 0,
+                falsePositives: 0
+            };
+        }
     }
 
     private async storeComplianceReport(report: ComplianceReport): Promise<void> {
-        // Store report in database for audit purposes
-        logger.info(`Storing compliance report: ${report.reportId}`);
+        try {
+            // Store report in database for audit purposes
+            await prisma.complianceReport.create({
+                data: {
+                    id: crypto.randomUUID(),
+                    reportId: report.reportId,
+                    reportType: report.type,
+                    startDate: report.period.startDate,
+                    endDate: report.period.endDate,
+                    summary: JSON.stringify(report.summary),
+                    kycStats: JSON.stringify(report.kycStats),
+                    amlStats: JSON.stringify(report.amlStats),
+                    sanctionsStats: JSON.stringify(report.sanctionsStats),
+                    createdAt: new Date()
+                }
+            });
+        } catch (error) {
+            logger.error('Error storing compliance report:', error);
+        }
     }
 
     private async checkMerchantTransactionPatterns(merchantId: string): Promise<string[]> {
-        // Check for suspicious merchant transaction patterns
-        const patterns: string[] = [];
-        
-        // Check for unusual transaction volumes
-        const recentVolume = await prisma.payment.aggregate({
-            where: {
-                merchantId,
-                createdAt: {
-                    gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
+        try {
+            // Check for suspicious merchant transaction patterns
+            const patterns: string[] = [];
+            
+            // Check for unusual transaction volumes
+            const recentVolume = await prisma.payment.aggregate({
+                where: {
+                    merchantId,
+                    createdAt: {
+                        gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
+                    }
+                },
+                _sum: { amount: true },
+                _count: true
+            });
+            
+            if (recentVolume._count > 1000) {
+                patterns.push('HIGH_TRANSACTION_VOLUME');
+            }
+            
+            // Check for unusual transaction sizes
+            if (recentVolume._sum && recentVolume._sum.amount && recentVolume._count) {
+                const avgTransactionSize = recentVolume._sum.amount / recentVolume._count;
+                
+                if (avgTransactionSize > 10000) {
+                    patterns.push('HIGH_AVERAGE_TRANSACTION_SIZE');
                 }
-            },
-            _sum: { amount: true },
-            _count: true
-        });
-        
-        if (recentVolume._count > 1000) {
-            patterns.push('HIGH_TRANSACTION_VOLUME');
+            }
+            
+            // Check for unusual transaction timing
+            const nightTimeTransactions = await prisma.payment.count({
+                where: {
+                    merchantId,
+                    createdAt: {
+                        gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
+                    }
+                    // In a real implementation, we would check the hour of day
+                }
+            });
+            
+            if (nightTimeTransactions > 100) {
+                patterns.push('UNUSUAL_TRANSACTION_TIMING');
+            }
+            
+            return patterns;
+        } catch (error) {
+            logger.error('Error checking merchant transaction patterns:', error);
+            return [];
         }
-        
-        return patterns;
     }
 
     private async checkJurisdictionCompliance(merchant: any): Promise<{ issues: string[]; recommendations: string[] }> {
@@ -800,6 +1421,43 @@ export class ComplianceService {
             recommendations.push('Provide valid tax identification number');
         }
         
+        // Check business registration
+        if (!merchant.registrationNumber) {
+            issues.push('Missing business registration');
+            recommendations.push('Provide valid business registration number');
+        }
+        
+        // Check for high-risk jurisdictions
+        if (merchant.country && ['IR', 'KP', 'CU', 'SY', 'VE'].includes(merchant.country)) {
+            issues.push('Business registered in high-risk jurisdiction');
+            recommendations.push('Additional documentation and verification required');
+        }
+        
         return { issues, recommendations };
+    }
+
+    private validateDocumentFormat(documentBase64: string, fileName: string): void {
+        // Check file extension
+        const validExtensions = ['.jpg', '.jpeg', '.png', '.pdf'];
+        const hasValidExtension = validExtensions.some(ext => 
+            fileName.toLowerCase().endsWith(ext)
+        );
+        
+        if (!hasValidExtension) {
+            throw new Error('Invalid document format. Supported formats: JPG, PNG, PDF');
+        }
+        
+        // Check base64 string
+        if (!documentBase64.match(/^[A-Za-z0-9+/=]+$/)) {
+            throw new Error('Invalid base64 encoding');
+        }
+        
+        // Check file size (rough estimate from base64 length)
+        const sizeInBytes = Math.ceil(documentBase64.length * 0.75);
+        const maxSizeInBytes = 10 * 1024 * 1024; // 10MB
+        
+        if (sizeInBytes > maxSizeInBytes) {
+            throw new Error('Document size exceeds maximum allowed (10MB)');
+        }
     }
 }

@@ -8,7 +8,6 @@ import {
   BridgeTransaction,
   BridgeEstimate,
   LiquidityInfo,
-  BridgeStatus,
   BridgeTransactionDetail,
   BridgeTransactionHistory,
   ValidatorInfo,
@@ -17,7 +16,7 @@ import {
   BridgeAnalytics,
   ChainInfo
 } from '../types/crosschain';
-import { ChainName, TokenSymbol, PaginatedResponse, PaginationParams } from '../types/common';
+import { PaginatedResponse } from '../types/common';
 
 export class CrossChainService {
   private apiClient: ApiClient;

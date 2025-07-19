@@ -5,7 +5,9 @@
 import { YieldRailsSDK } from '../yieldrails-sdk';
 import { ApiClient } from '../client/api-client';
 import { WebSocketClient } from '../client/websocket-client';
-import { SDKConfig } from '../types/common';
+import { ContractHelper } from '../blockchain/contract-helper';
+import { SDKConfig, ChainName } from '../types/common';
+import { ethers } from 'ethers';
 
 // Mock dependencies
 jest.mock('../client/api-client');
@@ -14,14 +16,19 @@ jest.mock('../services/auth');
 jest.mock('../services/payment');
 jest.mock('../services/yield');
 jest.mock('../services/crosschain');
+jest.mock('../services/compliance');
+jest.mock('../blockchain/contract-helper');
+jest.mock('ethers');
 
 const MockedApiClient = ApiClient as jest.MockedClass<typeof ApiClient>;
 const MockedWebSocketClient = WebSocketClient as jest.MockedClass<typeof WebSocketClient>;
+const MockedContractHelper = ContractHelper as jest.MockedClass<typeof ContractHelper>;
 
 describe('YieldRailsSDK', () => {
   let sdk: YieldRailsSDK;
   let mockApiClient: jest.Mocked<ApiClient>;
   let mockWebSocketClient: jest.Mocked<WebSocketClient>;
+  let mockContractHelper: jest.Mocked<ContractHelper>;
 
   const config: SDKConfig = {
     apiUrl: 'https://api.yieldrails.com',
@@ -49,9 +56,20 @@ describe('YieldRailsSDK', () => {
       on: jest.fn(),
       off: jest.fn(),
     } as any;
+    
+    mockContractHelper = {
+      initContract: jest.fn().mockReturnValue({}),
+      initContractOnChain: jest.fn().mockReturnValue({}),
+      getProvider: jest.fn(),
+      getExplorerUrl: jest.fn().mockReturnValue('https://etherscan.io/tx/0xabc123'),
+      waitForTransaction: jest.fn().mockResolvedValue({ status: 1 }),
+      readContract: jest.fn(),
+      writeContract: jest.fn(),
+    } as any;
 
     MockedApiClient.mockImplementation(() => mockApiClient);
     MockedWebSocketClient.mockImplementation(() => mockWebSocketClient);
+    MockedContractHelper.mockImplementation(() => mockContractHelper);
 
     sdk = new YieldRailsSDK(config);
   });
@@ -67,6 +85,8 @@ describe('YieldRailsSDK', () => {
       expect(sdk.payments).toBeDefined();
       expect(sdk.yield).toBeDefined();
       expect(sdk.crosschain).toBeDefined();
+      expect(sdk.compliance).toBeDefined();
+      expect(sdk.blockchain).toBeDefined();
     });
   });
 
@@ -211,7 +231,7 @@ describe('YieldRailsSDK', () => {
   describe('utility methods', () => {
     it('should return SDK version', () => {
       const version = sdk.getVersion();
-      expect(version).toBe('0.1.0');
+      expect(version).toBe('0.2.0');
     });
 
     it('should return supported chains', () => {
@@ -440,6 +460,72 @@ describe('YieldRailsSDK', () => {
     });
   });
 
+  describe('blockchain methods', () => {
+    it('should initialize contract', () => {
+      const address = '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b9';
+      const abi = [{ name: 'test', type: 'function' }];
+      
+      sdk.initContract('test-contract', address, abi);
+      
+      expect(mockContractHelper.initContract).toHaveBeenCalledWith(
+        'test-contract',
+        { address, abi, signer: undefined }
+      );
+    });
+    
+    it('should initialize contract on specific chain', () => {
+      const address = '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b9';
+      const abi = [{ name: 'test', type: 'function' }];
+      const chain = ChainName.ethereum;
+      
+      sdk.initContract('test-contract', address, abi, chain);
+      
+      expect(mockContractHelper.initContractOnChain).toHaveBeenCalledWith(
+        'test-contract',
+        chain,
+        address,
+        abi,
+        undefined
+      );
+    });
+    
+    it('should connect wallet', async () => {
+      const mockProvider = {
+        getSigner: jest.fn().mockResolvedValue('signer')
+      } as any;
+      
+      const signer = await sdk.connectWallet(mockProvider);
+      
+      expect(mockProvider.getSigner).toHaveBeenCalled();
+      expect(signer).toBe('signer');
+    });
+    
+    it('should get transaction explorer URL', () => {
+      const url = sdk.getTransactionExplorerUrl(ChainName.ethereum, '0xabc123');
+      
+      expect(mockContractHelper.getExplorerUrl).toHaveBeenCalledWith(
+        ChainName.ethereum,
+        '0xabc123'
+      );
+      expect(url).toBe('https://etherscan.io/tx/0xabc123');
+    });
+    
+    it('should wait for transaction confirmation', async () => {
+      const receipt = await sdk.waitForTransaction(
+        ChainName.ethereum,
+        '0xabc123',
+        2
+      );
+      
+      expect(mockContractHelper.waitForTransaction).toHaveBeenCalledWith(
+        ChainName.ethereum,
+        '0xabc123',
+        2
+      );
+      expect(receipt).toEqual({ status: 1 });
+    });
+  });
+
   describe('error handling', () => {
     it('should handle auto token refresh errors gracefully', async () => {
       const mockAuthService = {
@@ -461,6 +547,16 @@ describe('YieldRailsSDK', () => {
       // Clean up
       consoleSpy.mockRestore();
       mockSetInterval.mockRestore();
+    });
+    
+    it('should handle wallet connection errors', async () => {
+      const mockProvider = {
+        getSigner: jest.fn().mockRejectedValue(new Error('Connection failed'))
+      } as any;
+      
+      await expect(sdk.connectWallet(mockProvider)).rejects.toThrow(
+        'Failed to connect wallet: Connection failed'
+      );
     });
   });
 });

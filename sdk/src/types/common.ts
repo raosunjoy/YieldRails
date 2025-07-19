@@ -73,3 +73,37 @@ export interface WebSocketConfig {
   maxReconnectAttempts?: number;
   reconnectInterval?: number;
 }
+
+export interface ChainConfig {
+  rpcUrl: string;
+  chainId: number;
+  name: string;
+  blockExplorer?: string;
+  nativeCurrency?: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+}
+
+export interface ContractAddresses {
+  YieldEscrow: string;
+  YieldVault: string;
+  CrossChainBridge: string;
+}
+
+export interface TokenConfig {
+  symbol: TokenSymbol;
+  name: string;
+  decimals: number;
+  addresses: Record<ChainName, string>;
+}
+
+export interface TransactionOptions {
+  gasLimit?: bigint | number;
+  gasPrice?: bigint | number;
+  maxFeePerGas?: bigint | number;
+  maxPriorityFeePerGas?: bigint | number;
+  nonce?: number;
+  value?: bigint | number;
+}

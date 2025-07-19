@@ -2,7 +2,7 @@
  * Cross-chain bridge types for YieldRails SDK
  */
 
-import { ChainName, TokenSymbol } from './common';
+// Types are imported where needed
 
 /**
  * Bridge transaction status

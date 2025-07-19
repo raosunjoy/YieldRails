@@ -15,6 +15,26 @@ export { AuthService } from './services/auth';
 export { PaymentService } from './services/payment';
 export { YieldService } from './services/yield';
 export { CrossChainService } from './services/crosschain';
+export { ComplianceService } from './services/compliance';
+
+// Blockchain helpers
+export { ContractHelper } from './blockchain/contract-helper';
+export { YieldRailsContracts } from './blockchain/yieldrails-contracts';
+export { 
+  getDeploymentConfig,
+  getAllContractAddresses,
+  getContractAddress,
+  isContractDeployed,
+  isContractVerified,
+  getDeploymentInfo,
+  getSupportedNetworks,
+  getMainnetNetworks,
+  getTestnetNetworks,
+  chainNameToNetwork,
+  getBlockExplorerUrl,
+  getTransactionUrl,
+  getContractUrl,
+} from './blockchain/deployment-config';
 
 // Types
 export * from './types';

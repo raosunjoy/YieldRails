@@ -9,8 +9,12 @@ import { PaymentService } from './services/payment';
 import { YieldService } from './services/yield';
 import { CrossChainService } from './services/crosschain';
 import { ComplianceService } from './services/compliance';
-import { SDKConfig, WebSocketConfig } from './types/common';
+import { ContractHelper } from './blockchain/contract-helper';
+import { YieldRailsContracts } from './blockchain/yieldrails-contracts';
+import { getDeploymentConfig, getAllContractAddresses } from './blockchain/deployment-config';
+import { SDKConfig, WebSocketConfig, ChainName } from './types/common';
 import { CreatePaymentRequest } from './types/payment';
+import { ethers } from 'ethers';
 
 export class YieldRailsSDK {
   private apiClient: ApiClient;
@@ -22,6 +26,8 @@ export class YieldRailsSDK {
   public readonly yield: YieldService;
   public readonly crosschain: CrossChainService;
   public readonly compliance: ComplianceService;
+  public readonly blockchain: ContractHelper;
+  public readonly contracts: YieldRailsContracts;
 
   constructor(config: SDKConfig) {
     // Initialize API client
@@ -33,6 +39,11 @@ export class YieldRailsSDK {
     this.yield = new YieldService(this.apiClient);
     this.crosschain = new CrossChainService(this.apiClient);
     this.compliance = new ComplianceService(this.apiClient);
+    this.blockchain = new ContractHelper();
+    this.contracts = new YieldRailsContracts(this.blockchain);
+
+    // Initialize contract addresses from deployment config
+    this.initializeContractAddresses();
   }
 
   /**
@@ -145,7 +156,7 @@ export class YieldRailsSDK {
    * Get SDK version
    */
   public getVersion(): string {
-    return '0.1.0';
+    return '0.3.0';
   }
 
   /**
@@ -160,6 +171,55 @@ export class YieldRailsSDK {
    */
   public getSupportedTokens(): string[] {
     return ['USDC', 'USDT', 'EURC', 'RLUSD'];
+  }
+
+  /**
+   * Initialize contract with ABI and address
+   */
+  public initContract(
+    contractId: string,
+    address: string,
+    abi: any[],
+    chain?: ChainName,
+    signer?: ethers.Signer
+  ): ethers.Contract {
+    if (chain) {
+      return this.blockchain.initContractOnChain(contractId, chain, address, abi, signer);
+    } else {
+      return this.blockchain.initContract(contractId, { address, abi, signer });
+    }
+  }
+
+  /**
+   * Connect wallet to SDK for blockchain interactions
+   */
+  public async connectWallet(
+    provider: ethers.BrowserProvider | ethers.JsonRpcProvider
+  ): Promise<ethers.Signer> {
+    try {
+      const signer = await provider.getSigner();
+      return signer;
+    } catch (error) {
+      throw new Error(`Failed to connect wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get transaction explorer URL
+   */
+  public getTransactionExplorerUrl(chain: ChainName, txHash: string): string {
+    return this.blockchain.getExplorerUrl(chain, txHash);
+  }
+
+  /**
+   * Wait for transaction confirmation
+   */
+  public async waitForTransaction(
+    chain: ChainName,
+    txHash: string,
+    confirmations: number = 1
+  ): Promise<ethers.TransactionReceipt> {
+    return this.blockchain.waitForTransaction(chain, txHash, confirmations);
   }
 
   /**
@@ -331,6 +391,205 @@ export class YieldRailsSDK {
     } catch (error) {
       throw new Error(`Failed to estimate yield: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Initialize contract addresses from deployment configuration
+   */
+  private initializeContractAddresses(): void {
+    const supportedNetworks = ['ethereum', 'polygon', 'arbitrum', 'base', 'sepolia', 'mumbai', 'arbitrum-sepolia', 'base-sepolia'];
+    
+    supportedNetworks.forEach(network => {
+      const config = getDeploymentConfig(network);
+      if (config) {
+        const chainName = this.networkToChainName(network);
+        if (chainName) {
+          const addresses = getAllContractAddresses(network);
+          this.contracts.setContractAddresses(chainName, {
+            yieldEscrow: addresses.yieldEscrow,
+            yieldVault: addresses.yieldVault,
+            crossChainBridge: addresses.crossChainBridge,
+          });
+        }
+      }
+    });
+  }
+
+  /**
+   * Convert network string to ChainName enum
+   */
+  private networkToChainName(network: string): ChainName | undefined {
+    const mapping: Record<string, ChainName> = {
+      'ethereum': ChainName.ethereum,
+      'sepolia': ChainName.ethereum, // Sepolia is Ethereum testnet
+      'polygon': ChainName.polygon,
+      'mumbai': ChainName.polygon, // Mumbai is Polygon testnet
+      'arbitrum': ChainName.arbitrum,
+      'arbitrum-sepolia': ChainName.arbitrum, // Arbitrum testnet
+      'base': ChainName.base,
+      'base-sepolia': ChainName.base, // Base testnet
+    };
+    
+    return mapping[network];
+  }
+
+  /**
+   * Initialize YieldRails contracts for a specific chain
+   */
+  public async initializeContractsForChain(
+    chain: ChainName,
+    contractABIs: {
+      yieldEscrow?: any[];
+      yieldVault?: any[];
+      crossChainBridge?: any[];
+    },
+    signer?: ethers.Signer
+  ): Promise<{
+    yieldEscrow?: ethers.Contract;
+    yieldVault?: ethers.Contract;
+    crossChainBridge?: ethers.Contract;
+  }> {
+    const contracts: any = {};
+
+    try {
+      if (contractABIs.yieldEscrow) {
+        contracts.yieldEscrow = await this.contracts.initYieldEscrow(
+          chain,
+          contractABIs.yieldEscrow,
+          signer
+        );
+      }
+
+      if (contractABIs.yieldVault) {
+        contracts.yieldVault = await this.contracts.initYieldVault(
+          chain,
+          contractABIs.yieldVault,
+          signer
+        );
+      }
+
+      if (contractABIs.crossChainBridge) {
+        contracts.crossChainBridge = await this.contracts.initCrossChainBridge(
+          chain,
+          contractABIs.crossChainBridge,
+          signer
+        );
+      }
+
+      return contracts;
+    } catch (error) {
+      throw new Error(`Failed to initialize contracts for ${chain}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Create a payment directly on-chain
+   */
+  public async createOnChainPayment(
+    chain: ChainName,
+    merchant: string,
+    amount: string,
+    token: string,
+    strategy: string,
+    overrides: ethers.Overrides = {}
+  ): Promise<ethers.TransactionResponse> {
+    return this.contracts.createDeposit(chain, merchant, amount, token, strategy, overrides);
+  }
+
+  /**
+   * Get payment details from blockchain
+   */
+  public async getOnChainPayment(chain: ChainName, depositId: string) {
+    return this.contracts.getDeposit(chain, depositId);
+  }
+
+  /**
+   * Release payment on-chain
+   */
+  public async releaseOnChainPayment(
+    chain: ChainName,
+    depositId: string,
+    overrides: ethers.Overrides = {}
+  ): Promise<ethers.TransactionResponse> {
+    return this.contracts.releaseDeposit(chain, depositId, overrides);
+  }
+
+  /**
+   * Get real-time yield calculation
+   */
+  public async getRealtimeYield(chain: ChainName, depositId: string): Promise<string> {
+    return this.contracts.calculateYield(chain, depositId);
+  }
+
+  /**
+   * Get all user deposits from blockchain
+   */
+  public async getUserOnChainDeposits(chain: ChainName, userAddress: string): Promise<string[]> {
+    return this.contracts.getUserDeposits(chain, userAddress);
+  }
+
+  /**
+   * Get available yield strategies from blockchain
+   */
+  public async getOnChainYieldStrategies(chain: ChainName) {
+    return this.contracts.getYieldStrategies(chain);
+  }
+
+  /**
+   * Initiate cross-chain bridge transaction on blockchain
+   */
+  public async initiateBridgeOnChain(
+    sourceChain: ChainName,
+    destinationChain: string,
+    destinationAddress: string,
+    amount: string,
+    token: string,
+    overrides: ethers.Overrides = {}
+  ): Promise<ethers.TransactionResponse> {
+    return this.contracts.initiateBridge(
+      sourceChain,
+      destinationChain,
+      destinationAddress,
+      amount,
+      token,
+      overrides
+    );
+  }
+
+  /**
+   * Subscribe to real-time blockchain events
+   */
+  public subscribeToBlockchainEvents(
+    chain: ChainName,
+    eventType: 'deposits' | 'yields' | 'bridges',
+    callback: (event: any) => void,
+    userAddress?: string
+  ): void {
+    switch (eventType) {
+      case 'deposits':
+        this.contracts.onDepositCreated(chain, callback, userAddress);
+        break;
+      case 'yields':
+        this.contracts.onYieldEarned(chain, callback, userAddress);
+        break;
+      case 'bridges':
+        this.contracts.onBridgeInitiated(chain, callback, userAddress);
+        break;
+    }
+  }
+
+  /**
+   * Unsubscribe from blockchain events
+   */
+  public unsubscribeFromBlockchainEvents(chain: ChainName): void {
+    this.contracts.removeAllListeners(chain);
+  }
+
+  /**
+   * Get deployment information for contracts
+   */
+  public getDeploymentInfo(network: string) {
+    return getDeploymentConfig(network);
   }
 
   /**
