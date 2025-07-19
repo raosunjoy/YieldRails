@@ -1,13 +1,12 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
 import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
 import { config } from './config/environment';
 import { logger } from './utils/logger';
-import { errorHandler } from './middleware/errorHandler';
-import { requestValidator } from './middleware/requestValidator';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { requestValidator, requestIdMiddleware, requestSizeLimiter } from './middleware/requestValidator';
 import { authMiddleware } from './middleware/auth';
+import { securityMiddleware } from './middleware/security';
 import { database } from './config/database';
 import { redis } from './config/redis';
 import { websocketServer } from './services/websocket';
@@ -37,34 +36,31 @@ class YieldRailsServer {
     }
 
     private setupMiddleware(): void {
-        // Security middleware
-        this.app.use(helmet({
-            contentSecurityPolicy: {
-                directives: {
-                    defaultSrc: ["'self'"],
-                    styleSrc: ["'self'", "'unsafe-inline'"],
-                    scriptSrc: ["'self'"],
-                    imgSrc: ["'self'", "data:", "https:"],
-                },
-            },
-        }));
-
-        // CORS configuration
-        this.app.use(cors({
-            origin: config.ALLOWED_ORIGINS.split(','),
-            credentials: true,
-        }));
-
-        // Rate limiting
-        const limiter = rateLimit({
-            windowMs: 15 * 60 * 1000, // 15 minutes
-            max: config.RATE_LIMIT_MAX,
-            message: 'Too many requests from this IP',
-            standardHeaders: true,
-            legacyHeaders: false,
-        });
-        this.app.use(limiter);
-
+        // Request ID for tracing
+        this.app.use(requestIdMiddleware);
+        
+        // Enhanced security middleware
+        this.app.use(securityMiddleware.enhancedHelmet);
+        this.app.use(securityMiddleware.additionalSecurityHeaders);
+        
+        // CORS configuration with enhanced security
+        this.app.use(cors(securityMiddleware.corsOptions));
+        
+        // Redis-backed rate limiting for better performance and distributed rate limiting
+        this.app.use(securityMiddleware.redisRateLimiter);
+        
+        // Request size limiting to prevent DoS attacks
+        this.app.use(requestSizeLimiter(10)); // 10MB limit
+        
+        // Input sanitization to prevent XSS and injection attacks
+        this.app.use(securityMiddleware.inputSanitizer);
+        
+        // SQL injection protection
+        this.app.use(securityMiddleware.sqlInjectionProtection);
+        
+        // Audit logging for sensitive operations
+        this.app.use(securityMiddleware.auditLogger);
+        
         // Request parsing and logging
         this.app.use(express.json({ limit: '10mb' }));
         this.app.use(express.urlencoded({ extended: true }));
@@ -104,14 +100,8 @@ class YieldRailsServer {
             });
         });
 
-        // 404 handler
-        this.app.use('*', (req, res) => {
-            res.status(404).json({
-                error: 'Not Found',
-                message: `Route ${req.originalUrl} not found`,
-                timestamp: new Date().toISOString(),
-            });
-        });
+        // 404 handler with improved security
+        this.app.use('*', notFoundHandler);
     }
 
     private setupErrorHandling(): void {
