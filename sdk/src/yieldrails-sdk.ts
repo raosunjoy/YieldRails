@@ -8,6 +8,7 @@ import { AuthService } from './services/auth';
 import { PaymentService } from './services/payment';
 import { YieldService } from './services/yield';
 import { CrossChainService } from './services/crosschain';
+import { ComplianceService } from './services/compliance';
 import { SDKConfig, WebSocketConfig } from './types/common';
 import { CreatePaymentRequest } from './types/payment';
 
@@ -20,6 +21,7 @@ export class YieldRailsSDK {
   public readonly payments: PaymentService;
   public readonly yield: YieldService;
   public readonly crosschain: CrossChainService;
+  public readonly compliance: ComplianceService;
 
   constructor(config: SDKConfig) {
     // Initialize API client
@@ -30,6 +32,7 @@ export class YieldRailsSDK {
     this.payments = new PaymentService(this.apiClient);
     this.yield = new YieldService(this.apiClient);
     this.crosschain = new CrossChainService(this.apiClient);
+    this.compliance = new ComplianceService(this.apiClient);
   }
 
   /**
