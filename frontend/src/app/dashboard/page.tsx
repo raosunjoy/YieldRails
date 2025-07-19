@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { MainLayout } from '@/components/layout/MainLayout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useStore } from '@/store/useStore';
@@ -51,14 +52,13 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+    <MainLayout>
+      <div className="py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+          <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-sm text-gray-500 mt-1">
+              <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Dashboard</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 Welcome back! Here's what's happening with your payments.
               </p>
             </div>
@@ -66,15 +66,10 @@ export default function Dashboard() {
               <Link href="/payments/create">
                 <Button>Create Payment</Button>
               </Link>
-              <Link href="/">
-                <Button variant="secondary">Back to Home</Button>
-              </Link>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          
+          <div className="mt-6">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card>
@@ -268,7 +263,8 @@ export default function Dashboard() {
             </div>
           </Card>
         </div>
+        </div>
       </div>
-    </div>
+    </MainLayout>
   );
 }

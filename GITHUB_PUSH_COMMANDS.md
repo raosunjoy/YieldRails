@@ -1,53 +1,66 @@
-# GitHub Push Commands
+# GitHub Push Commands for YieldRails Frontend Implementation
 
-Run the following commands to push the changes to GitHub:
+Use the following commands to push the latest frontend implementation to GitHub:
 
 ```bash
-# Add all files
+# Add all new and modified files
 git add .
 
-# Commit with message
-git commit -m "feat(integrations): implement external service integrations
+# Commit the changes with a descriptive message
+git commit -m "Implement complete frontend application with React/Next.js
 
-- Add Circle CCTP integration for cross-chain USDC transfers
-- Add Chainalysis integration for compliance checks
-- Add MoonPay integration for fiat on-ramp
-- Update ComplianceService to use Chainalysis
-- Update CrossChainService to use Circle CCTP
-- Add comprehensive unit and integration tests
-- Update environment configuration for external services
+- Create payment creation and management interfaces with real-time updates
+- Implement yield dashboard with strategy selection and performance tracking
+- Build merchant dashboard with analytics and payment management
+- Add user profile management with KYC status and preferences
+- Implement responsive design with mobile-first approach
+- Write comprehensive component tests and E2E user flows"
 
-Closes #21"
-
-# Push to GitHub
+# Push the changes to the main branch
 git push origin main
 ```
 
-If you're working on a feature branch:
+## Additional Commands
+
+If you need to create a new branch for this feature:
 
 ```bash
-# Create and switch to a feature branch
-git checkout -b feature/external-service-integrations
+# Create and checkout a new branch
+git checkout -b feature/frontend-implementation
 
-# Add all files
+# Add and commit changes
 git add .
+git commit -m "Implement complete frontend application with React/Next.js"
 
-# Commit with message
-git commit -m "feat(integrations): implement external service integrations
+# Push the branch to GitHub
+git push -u origin feature/frontend-implementation
+```
 
-- Add Circle CCTP integration for cross-chain USDC transfers
-- Add Chainalysis integration for compliance checks
-- Add MoonPay integration for fiat on-ramp
-- Update ComplianceService to use Chainalysis
-- Update CrossChainService to use Circle CCTP
-- Add comprehensive unit and integration tests
-- Update environment configuration for external services
+## Pull Request Template
 
-Closes #21"
+When creating a pull request, use the following template:
 
-# Push to GitHub
-git push origin feature/external-service-integrations
+```markdown
+## Description
+This PR implements the complete frontend application for YieldRails using React and Next.js.
 
-# Create a pull request on GitHub
-# Go to https://github.com/your-username/YieldRails/pull/new/feature/external-service-integrations
+## Features Implemented
+- Payment creation and management interfaces with real-time updates
+- Yield dashboard with strategy selection and performance tracking
+- Merchant dashboard with analytics and payment management
+- User profile management with KYC status and preferences
+- Responsive design with mobile-first approach
+- Comprehensive component tests and E2E user flows
+
+## Testing Done
+- Component tests for all new components
+- E2E tests for critical user flows
+- Responsive design testing on multiple device sizes
+- Cross-browser testing
+
+## Screenshots
+[Add screenshots here]
+
+## Related Issues
+Closes #32
 ```

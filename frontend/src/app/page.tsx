@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 
@@ -10,9 +11,19 @@ export default function Home() {
         <div className="absolute inset-0 gradient-stripe opacity-10"></div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
           <div className="text-center">
+            <div className="flex justify-center mb-6">
+              <Image
+                src="/images/YieldRailsLogo.png"
+                alt="YieldRails"
+                width={300}
+                height={80}
+                className="h-20 w-auto"
+                priority
+              />
+            </div>
             <h1 className="text-5xl font-bold text-gray-900 sm:text-6xl">
               <span className="gradient-stripe bg-clip-text text-transparent">
-                YieldRails
+                Yield-Generating Payments
               </span>
             </h1>
             <p className="mt-6 text-xl text-gray-600 max-w-3xl mx-auto">
