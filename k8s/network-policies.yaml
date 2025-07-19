@@ -1,0 +1,399 @@
+# Network Security Policies for YieldRails
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: yieldrails-network-policy
+  namespace: yieldrails-prod
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from NGINX to backend
+  - from:
+    - podSelector:
+        matchLabels:
+          app: nginx
+    to:
+    - podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: 3000
+  
+  # Allow ingress from NGINX to frontend
+  - from:
+    - podSelector:
+        matchLabels:
+          app: nginx
+    to:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 3000
+  
+  # Allow monitoring scraping
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: yieldrails-monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+  
+  egress:
+  # Allow egress to PostgreSQL
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  # Allow egress to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  
+  # Allow external API calls (port 443 for HTTPS)
+  - ports:
+    - protocol: TCP
+      port: 443
+  
+  # Allow external RPC calls (various ports for blockchain RPCs)
+  - ports:
+    - protocol: TCP
+      port: 8545  # Ethereum RPC
+    - protocol: TCP
+      port: 8546  # Ethereum WebSocket
+    - protocol: TCP
+      port: 9933  # Polygon RPC
+    - protocol: TCP
+      port: 421613  # Arbitrum RPC
+
+---
+# Database Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-network-policy
+  namespace: yieldrails-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only allow ingress from backend applications
+  - from:
+    - podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: yieldrails-monitoring
+    ports:
+    - protocol: TCP
+      port: 9187  # Postgres exporter
+  
+  egress:
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Redis Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-network-policy
+  namespace: yieldrails-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only allow ingress from backend applications
+  - from:
+    - podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: 6379
+  
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: yieldrails-monitoring
+    ports:
+    - protocol: TCP
+      port: 9121  # Redis exporter
+  
+  egress:
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# NGINX Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nginx-network-policy
+  namespace: yieldrails-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: nginx
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow all ingress for load balancer
+  - {}
+  
+  egress:
+  # Allow egress to backend
+  - to:
+    - podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: 3000
+  
+  # Allow egress to frontend
+  - to:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 3000
+  
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Backend Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-network-policy
+  namespace: yieldrails-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from NGINX
+  - from:
+    - podSelector:
+        matchLabels:
+          app: nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+  
+  # Allow monitoring scraping
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: yieldrails-monitoring
+    ports:
+    - protocol: TCP
+      port: 9090  # Metrics port
+  
+  egress:
+  # Allow egress to PostgreSQL
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  
+  # Allow egress to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  
+  # Allow external API calls
+  - ports:
+    - protocol: TCP
+      port: 443  # HTTPS
+    - protocol: TCP
+      port: 80   # HTTP (for some APIs)
+  
+  # Allow blockchain RPC calls
+  - ports:
+    - protocol: TCP
+      port: 8545  # Ethereum RPC
+    - protocol: TCP
+      port: 8546  # Ethereum WebSocket
+  
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# Frontend Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-network-policy
+  namespace: yieldrails-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from NGINX
+  - from:
+    - podSelector:
+        matchLabels:
+          app: nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+  
+  egress:
+  # Frontend typically doesn't need egress to backend
+  # (NGINX handles that routing)
+  
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Monitoring Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: monitoring-network-policy
+  namespace: yieldrails-monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress to monitoring dashboards
+  - {}
+  
+  egress:
+  # Allow scraping metrics from production namespace
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: yieldrails-prod
+    ports:
+    - protocol: TCP
+      port: 9090  # Backend metrics
+    - protocol: TCP
+      port: 9187  # Postgres exporter
+    - protocol: TCP
+      port: 9121  # Redis exporter
+    - protocol: TCP
+      port: 8080  # NGINX status
+  
+  # Allow scraping Kubernetes metrics
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: TCP
+      port: 10250  # Kubelet metrics
+    - protocol: TCP
+      port: 10255  # Kubelet read-only
+  
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  
+  # Allow external log shipping (if needed)
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 9200  # Elasticsearch

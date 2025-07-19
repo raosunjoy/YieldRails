@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: yieldrails-prod
+  labels:
+    name: yieldrails-prod
+    environment: production
+    app: yieldrails
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: yieldrails-staging
+  labels:
+    name: yieldrails-staging
+    environment: staging
+    app: yieldrails
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: yieldrails-monitoring
+  labels:
+    name: yieldrails-monitoring
+    environment: production
+    app: monitoring

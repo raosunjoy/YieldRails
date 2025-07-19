@@ -1,0 +1,221 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: yieldrails-prod
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: yieldrails-prod
+  labels:
+    app: postgres
+    component: database
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        component: database
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: DB_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: DB_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: DB_NAME
+        - name: POSTGRES_MAX_CONNECTIONS
+          value: "200"
+        - name: POSTGRES_SHARED_BUFFERS
+          value: "256MB"
+        - name: POSTGRES_EFFECTIVE_CACHE_SIZE
+          value: "2GB"
+        - name: POSTGRES_MAINTENANCE_WORK_MEM
+          value: "64MB"
+        - name: POSTGRES_CHECKPOINT_COMPLETION_TARGET
+          value: "0.9"
+        - name: POSTGRES_WAL_BUFFERS
+          value: "16MB"
+        - name: POSTGRES_DEFAULT_STATISTICS_TARGET
+          value: "100"
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+        - name: postgres-init
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+      - name: postgres-config
+        configMap:
+          name: postgres-config
+      - name: postgres-init
+        configMap:
+          name: postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: yieldrails-prod
+  labels:
+    app: postgres
+    component: database
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+  selector:
+    app: postgres
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: yieldrails-prod
+data:
+  postgresql.conf: |
+    # YieldRails PostgreSQL Configuration
+    # Performance Tuning for Production
+    
+    # Connection Settings
+    max_connections = 200
+    shared_buffers = 256MB
+    effective_cache_size = 2GB
+    maintenance_work_mem = 64MB
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    default_statistics_target = 100
+    
+    # Memory Settings
+    work_mem = 4MB
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    
+    # Write Ahead Logging
+    wal_level = replica
+    max_wal_senders = 3
+    max_replication_slots = 3
+    hot_standby = on
+    
+    # Logging
+    log_destination = 'stderr'
+    logging_collector = on
+    log_directory = 'log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_statement = 'all'
+    log_min_duration_statement = 1000
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_lock_waits = on
+    
+    # Security
+    ssl = on
+    ssl_cert_file = 'server.crt'
+    ssl_key_file = 'server.key'
+    
+    # Autovacuum
+    autovacuum = on
+    autovacuum_max_workers = 3
+    autovacuum_naptime = 1min
+    
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: yieldrails-prod
+data:
+  01-init-database.sql: |
+    -- YieldRails Database Initialization
+    -- Create additional database users and configurations
+    
+    -- Create read-only user for monitoring
+    CREATE USER yieldrails_monitoring WITH PASSWORD 'monitoring_password';
+    GRANT CONNECT ON DATABASE yieldrails_prod TO yieldrails_monitoring;
+    GRANT USAGE ON SCHEMA public TO yieldrails_monitoring;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO yieldrails_monitoring;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO yieldrails_monitoring;
+    
+    -- Create backup user
+    CREATE USER yieldrails_backup WITH PASSWORD 'backup_password';
+    GRANT CONNECT ON DATABASE yieldrails_prod TO yieldrails_backup;
+    GRANT USAGE ON SCHEMA public TO yieldrails_backup;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO yieldrails_backup;
+    
+    -- Performance optimizations
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    CREATE EXTENSION IF NOT EXISTS pg_buffercache;
+    
+  02-performance-indexes.sql: |
+    -- YieldRails Performance Indexes
+    -- These will be created after Prisma migrations
+    
+    -- Placeholder for additional indexes
+    -- Actual indexes will be created by Prisma migrations

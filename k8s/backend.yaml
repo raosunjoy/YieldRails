@@ -1,0 +1,272 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: yieldrails-prod
+  labels:
+    app: backend
+    component: api
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+      - name: backend
+        image: yieldrails/backend:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: PORT
+          value: "3000"
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: yieldrails-config
+              key: NODE_ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: yieldrails-config
+              key: LOG_LEVEL
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: DATABASE_URL
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: REDIS_URL
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: JWT_SECRET
+        - name: JWT_REFRESH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: JWT_REFRESH_SECRET
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: API_KEY
+        - name: CHAINALYSIS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: CHAINALYSIS_API_KEY
+        - name: CHAINALYSIS_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: yieldrails-config
+              key: CHAINALYSIS_API_URL
+        - name: CIRCLE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: CIRCLE_API_KEY
+        - name: CIRCLE_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: yieldrails-config
+              key: CIRCLE_API_URL
+        - name: MOONPAY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: MOONPAY_API_KEY
+        - name: MOONPAY_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: yieldrails-config
+              key: MOONPAY_API_URL
+        - name: ETHEREUM_RPC_URL
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: ETHEREUM_RPC_URL
+        - name: POLYGON_RPC_URL
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: POLYGON_RPC_URL
+        - name: ARBITRUM_RPC_URL
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: ARBITRUM_RPC_URL
+        - name: BASE_RPC_URL
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: BASE_RPC_URL
+        - name: SENTRY_DSN
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: SENTRY_DSN
+        - name: NEW_RELIC_LICENSE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: NEW_RELIC_LICENSE_KEY
+        - name: CORS_ORIGIN
+          valueFrom:
+            configMapKeyRef:
+              name: yieldrails-config
+              key: CORS_ORIGIN
+        - name: RATE_LIMIT_WINDOW
+          valueFrom:
+            configMapKeyRef:
+              name: yieldrails-config
+              key: RATE_LIMIT_WINDOW
+        - name: RATE_LIMIT_MAX
+          valueFrom:
+            configMapKeyRef:
+              name: yieldrails-config
+              key: RATE_LIMIT_MAX
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: tmp
+          mountPath: /app/tmp
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1001
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+      initContainers:
+      - name: migrate
+        image: yieldrails/backend:latest
+        command: ["npm", "run", "db:migrate:deploy"]
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: yieldrails-secrets
+              key: DATABASE_URL
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: yieldrails-prod
+  labels:
+    app: backend
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app: backend
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: yieldrails-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max

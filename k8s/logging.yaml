@@ -1,0 +1,602 @@
+# Elasticsearch for log storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-pvc
+  namespace: yieldrails-monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: yieldrails-monitoring
+  labels:
+    app: elasticsearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: elasticsearch-storage
+          mountPath: /usr/share/elasticsearch/data
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+        ports:
+        - containerPort: 9200
+        - containerPort: 9300
+        env:
+        - name: discovery.type
+          value: single-node
+        - name: xpack.security.enabled
+          value: "false"
+        - name: ES_JAVA_OPTS
+          value: "-Xms1g -Xmx1g"
+        - name: cluster.name
+          value: "yieldrails-logs"
+        - name: node.name
+          value: "elasticsearch-node"
+        - name: bootstrap.memory_lock
+          value: "true"
+        - name: network.host
+          value: "0.0.0.0"
+        volumeMounts:
+        - name: elasticsearch-storage
+          mountPath: /usr/share/elasticsearch/data
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /_cluster/health
+            port: 9200
+          initialDelaySeconds: 90
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /_cluster/health
+            port: 9200
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: elasticsearch-storage
+        persistentVolumeClaim:
+          claimName: elasticsearch-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: yieldrails-monitoring
+  labels:
+    app: elasticsearch
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9200
+    targetPort: 9200
+    name: http
+  - port: 9300
+    targetPort: 9300
+    name: transport
+  selector:
+    app: elasticsearch
+
+---
+# Kibana for log visualization
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: yieldrails-monitoring
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:8.8.0
+        ports:
+        - containerPort: 5601
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: "http://elasticsearch:9200"
+        - name: SERVER_NAME
+          value: "kibana"
+        - name: SERVER_HOST
+          value: "0.0.0.0"
+        - name: LOGGING_QUIET
+          value: "true"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/status
+            port: 5601
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/status
+            port: 5601
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: yieldrails-monitoring
+  labels:
+    app: kibana
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5601
+    targetPort: 5601
+    protocol: TCP
+  selector:
+    app: kibana
+
+---
+# Logstash for log processing
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: yieldrails-monitoring
+data:
+  logstash.yml: |
+    http.host: "0.0.0.0"
+    path.config: /usr/share/logstash/pipeline
+    xpack.monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+    
+  pipelines.yml: |
+    - pipeline.id: yieldrails
+      path.config: "/usr/share/logstash/pipeline/yieldrails.conf"
+      
+  yieldrails.conf: |
+    input {
+      beats {
+        port => 5044
+      }
+      
+      # Kubernetes logs
+      http {
+        port => 8080
+        codec => json
+      }
+    }
+    
+    filter {
+      # Parse JSON logs
+      if [fields][service] == "backend" {
+        json {
+          source => "message"
+        }
+        
+        # Parse timestamp
+        date {
+          match => [ "timestamp", "ISO8601" ]
+        }
+        
+        # Add service tags
+        mutate {
+          add_tag => ["backend", "api"]
+          add_field => { "service" => "yieldrails-backend" }
+        }
+      }
+      
+      # Parse NGINX logs
+      if [fields][service] == "nginx" {
+        grok {
+          match => { 
+            "message" => "%{NGINXACCESS}" 
+          }
+        }
+        
+        # Parse response time
+        if [request_time] {
+          mutate {
+            convert => { "request_time" => "float" }
+          }
+        }
+        
+        # Add service tags
+        mutate {
+          add_tag => ["nginx", "proxy"]
+          add_field => { "service" => "yieldrails-nginx" }
+        }
+      }
+      
+      # Parse frontend logs
+      if [fields][service] == "frontend" {
+        json {
+          source => "message"
+        }
+        
+        mutate {
+          add_tag => ["frontend", "web"]
+          add_field => { "service" => "yieldrails-frontend" }
+        }
+      }
+      
+      # Add Kubernetes metadata
+      if [kubernetes] {
+        mutate {
+          add_field => { 
+            "k8s_namespace" => "%{[kubernetes][namespace]}"
+            "k8s_pod" => "%{[kubernetes][pod][name]}"
+            "k8s_container" => "%{[kubernetes][container][name]}"
+          }
+        }
+      }
+      
+      # Security event processing
+      if [level] == "security" or [event_type] == "security" {
+        mutate {
+          add_tag => ["security", "alert"]
+        }
+        
+        # Extract security metrics
+        if [security_event] {
+          mutate {
+            add_field => { 
+              "security_category" => "%{[security_event][category]}"
+              "security_severity" => "%{[security_event][severity]}"
+            }
+          }
+        }
+      }
+      
+      # Performance metrics extraction
+      if [response_time] {
+        if [response_time] > 1000 {
+          mutate {
+            add_tag => ["slow_request"]
+          }
+        }
+      }
+      
+      # Error log processing
+      if [level] == "error" or [status] >= 400 {
+        mutate {
+          add_tag => ["error"]
+        }
+        
+        if [status] >= 500 {
+          mutate {
+            add_tag => ["server_error"]
+          }
+        }
+      }
+    }
+    
+    output {
+      elasticsearch {
+        hosts => ["http://elasticsearch:9200"]
+        index => "yieldrails-logs-%{+YYYY.MM.dd}"
+        template_name => "yieldrails"
+        template_pattern => "yieldrails-*"
+        template => {
+          "index_patterns" => ["yieldrails-*"]
+          "settings" => {
+            "number_of_shards" => 1
+            "number_of_replicas" => 0
+            "index.lifecycle.name" => "yieldrails-policy"
+          }
+          "mappings" => {
+            "properties" => {
+              "@timestamp" => { "type" => "date" }
+              "level" => { "type" => "keyword" }
+              "message" => { "type" => "text" }
+              "service" => { "type" => "keyword" }
+              "status" => { "type" => "integer" }
+              "response_time" => { "type" => "float" }
+              "user_id" => { "type" => "keyword" }
+              "request_id" => { "type" => "keyword" }
+              "ip_address" => { "type" => "ip" }
+              "user_agent" => { "type" => "keyword" }
+              "security_category" => { "type" => "keyword" }
+              "security_severity" => { "type" => "keyword" }
+            }
+          }
+        }
+      }
+      
+      # Output to stdout for debugging
+      stdout {
+        codec => rubydebug
+      }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: yieldrails-monitoring
+  labels:
+    app: logstash
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+      - name: logstash
+        image: docker.elastic.co/logstash/logstash:8.8.0
+        ports:
+        - containerPort: 5044
+        - containerPort: 8080
+        - containerPort: 9600
+        env:
+        - name: LS_JAVA_OPTS
+          value: "-Xmx1g -Xms1g"
+        volumeMounts:
+        - name: logstash-config
+          mountPath: /usr/share/logstash/config
+        - name: logstash-pipeline
+          mountPath: /usr/share/logstash/pipeline
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9600
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9600
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: logstash-config
+        configMap:
+          name: logstash-config
+          items:
+          - key: logstash.yml
+            path: logstash.yml
+          - key: pipelines.yml
+            path: pipelines.yml
+      - name: logstash-pipeline
+        configMap:
+          name: logstash-config
+          items:
+          - key: yieldrails.conf
+            path: yieldrails.conf
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  namespace: yieldrails-monitoring
+  labels:
+    app: logstash
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5044
+    targetPort: 5044
+    name: beats
+  - port: 8080
+    targetPort: 8080
+    name: http
+  - port: 9600
+    targetPort: 9600
+    name: api
+  selector:
+    app: logstash
+
+---
+# Filebeat DaemonSet for log collection
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: yieldrails-monitoring
+data:
+  filebeat.yml: |
+    filebeat.inputs:
+    - type: container
+      paths:
+        - /var/log/containers/*yieldrails*.log
+      processors:
+        - add_kubernetes_metadata:
+            host: ${NODE_NAME}
+            matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+    
+    output.logstash:
+      hosts: ["logstash:5044"]
+    
+    processors:
+      - add_host_metadata:
+          when.not.contains.tags: forwarded
+      - add_cloud_metadata: ~
+      - add_docker_metadata: ~
+      - add_kubernetes_metadata: ~
+    
+    logging.level: info
+    logging.to_files: true
+    logging.files:
+      path: /var/log/filebeat
+      name: filebeat
+      keepfiles: 7
+      permissions: 0644
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat
+  namespace: yieldrails-monitoring
+  labels:
+    app: filebeat
+spec:
+  selector:
+    matchLabels:
+      app: filebeat
+  template:
+    metadata:
+      labels:
+        app: filebeat
+    spec:
+      serviceAccountName: filebeat
+      terminationGracePeriodSeconds: 30
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: filebeat
+        image: docker.elastic.co/beats/filebeat:8.8.0
+        args: [
+          "-c", "/etc/filebeat.yml",
+          "-e",
+        ]
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          runAsUser: 0
+        resources:
+          limits:
+            memory: 200Mi
+            cpu: 100m
+          requests:
+            memory: 100Mi
+            cpu: 50m
+        volumeMounts:
+        - name: config
+          mountPath: /etc/filebeat.yml
+          readOnly: true
+          subPath: filebeat.yml
+        - name: data
+          mountPath: /usr/share/filebeat/data
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        - name: varlog
+          mountPath: /var/log
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          defaultMode: 0640
+          name: filebeat-config
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: data
+        hostPath:
+          path: /var/lib/filebeat-data
+          type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: yieldrails-monitoring
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+rules:
+- apiGroups: [""]
+  resources:
+  - namespaces
+  - pods
+  - nodes
+  verbs:
+  - get
+  - watch
+  - list
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+subjects:
+- kind: ServiceAccount
+  name: filebeat
+  namespace: yieldrails-monitoring
+roleRef:
+  kind: ClusterRole
+  name: filebeat
+  apiGroup: rbac.authorization.k8s.io
