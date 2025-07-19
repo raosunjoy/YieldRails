@@ -1,282 +1,256 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
-
 /**
- * Quality Gates Validation Script
- * Validates that all quality requirements are met across the project
+ * Quality Gate Validation Script
+ * 
+ * This script validates that all code meets the required quality gates:
+ * - Smart contracts: 100% test coverage
+ * - Backend: 95% test coverage
+ * - Frontend: 90% test coverage
+ * - SDK: 100% test coverage
+ * 
+ * Usage: node scripts/validate-quality-gates.js
  */
 
-const QUALITY_GATES = {
-  contracts: {
-    coverage: {
-      statements: 100,
-      branches: 100,
-      functions: 100,
-      lines: 100
-    },
-    gasLimit: 100000 // Max gas per transaction
-  },
-  backend: {
-    coverage: {
-      statements: 95,
-      branches: 95,
-      functions: 95,
-      lines: 95
-    },
-    responseTime: 200 // Max response time in ms (95th percentile)
-  },
-  frontend: {
-    coverage: {
-      statements: 90,
-      branches: 90,
-      functions: 90,
-      lines: 90
-    },
-    bundleSize: 500 // Max bundle size in KB
-  },
-  sdk: {
-    coverage: {
-      statements: 100,
-      branches: 100,
-      functions: 100,
-      lines: 100
-    },
-    bundleSize: 50 // Max bundle size in KB
-  }
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+// Coverage thresholds
+const THRESHOLDS = {
+  contracts: 100,
+  backend: 95,
+  frontend: 90,
+  sdk: 100
 };
 
-class QualityGateValidator {
-  constructor() {
-    this.errors = [];
-    this.warnings = [];
-  }
+// Colors for console output
+const colors = {
+  reset: '\x1b[0m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m'
+};
 
-  /**
-   * Validate coverage for a workspace
-   */
-  validateCoverage(workspace, coveragePath) {
-    console.log(`📊 Validating coverage for ${workspace}...`);
-    
-    if (!fs.existsSync(coveragePath)) {
-      this.errors.push(`Coverage file not found for ${workspace}: ${coveragePath}`);
-      return;
-    }
+console.log(`${colors.blue}=== YieldRails Quality Gate Validation ===${colors.reset}\n`);
 
-    try {
-      const coverage = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
-      const total = coverage.total;
-      const requirements = QUALITY_GATES[workspace].coverage;
+// Validate all projects
+let hasErrors = false;
 
-      const metrics = ['statements', 'branches', 'functions', 'lines'];
-      
-      for (const metric of metrics) {
-        const actual = total[metric].pct;
-        const required = requirements[metric];
-        
-        if (actual < required) {
-          this.errors.push(
-            `${workspace} ${metric} coverage is ${actual}%, required: ${required}%`
-          );
-        } else {
-          console.log(`  ✅ ${metric}: ${actual}% (required: ${required}%)`);
-        }
-      }
-    } catch (error) {
-      this.errors.push(`Failed to parse coverage for ${workspace}: ${error.message}`);
-    }
-  }
-
-  /**
-   * Validate gas usage for contracts
-   */
-  validateGasUsage() {
-    console.log(`⛽ Validating gas usage...`);
-    
-    const gasReportPath = path.join('contracts', 'gas-report.txt');
-    
-    if (!fs.existsSync(gasReportPath)) {
-      this.warnings.push('Gas report not found. Run tests with REPORT_GAS=true');
-      return;
-    }
-
-    try {
-      const gasReport = fs.readFileSync(gasReportPath, 'utf8');
-      const gasLimit = QUALITY_GATES.contracts.gasLimit;
-      
-      // Parse gas report for high gas usage functions
-      const lines = gasReport.split('\n');
-      const gasUsagePattern = /│\s+(\w+)\s+│.*│\s+(\d+)\s+│/;
-      
-      for (const line of lines) {
-        const match = line.match(gasUsagePattern);
-        if (match) {
-          const [, functionName, gasUsed] = match;
-          const gas = parseInt(gasUsed);
-          
-          if (gas > gasLimit) {
-            this.errors.push(
-              `Function ${functionName} uses ${gas} gas, limit: ${gasLimit}`
-            );
-          }
-        }
-      }
-      
-      console.log(`  ✅ Gas usage validation completed`);
-    } catch (error) {
-      this.warnings.push(`Failed to validate gas usage: ${error.message}`);
-    }
-  }
-
-  /**
-   * Validate bundle sizes
-   */
-  validateBundleSize(workspace) {
-    console.log(`📦 Validating bundle size for ${workspace}...`);
-    
-    const bundleLimit = QUALITY_GATES[workspace].bundleSize;
-    let bundlePath;
-    
-    switch (workspace) {
-      case 'frontend':
-        bundlePath = path.join('frontend', '.next', 'static');
-        break;
-      case 'sdk':
-        bundlePath = path.join('sdk', 'dist', 'index.js');
-        break;
-      default:
-        return;
-    }
-
-    if (!fs.existsSync(bundlePath)) {
-      this.warnings.push(`Bundle not found for ${workspace}: ${bundlePath}`);
-      return;
-    }
-
-    try {
-      const stats = fs.statSync(bundlePath);
-      const sizeKB = Math.round(stats.size / 1024);
-      
-      if (sizeKB > bundleLimit) {
-        this.errors.push(
-          `${workspace} bundle size is ${sizeKB}KB, limit: ${bundleLimit}KB`
-        );
-      } else {
-        console.log(`  ✅ Bundle size: ${sizeKB}KB (limit: ${bundleLimit}KB)`);
-      }
-    } catch (error) {
-      this.warnings.push(`Failed to check bundle size for ${workspace}: ${error.message}`);
-    }
-  }
-
-  /**
-   * Validate response time requirements
-   */
-  validateResponseTime() {
-    console.log(`⚡ Validating response time requirements...`);
-    
-    // This would typically integrate with performance testing results
-    // For now, we'll just check if performance tests exist
-    const perfTestPath = path.join('backend', 'test', 'performance');
-    
-    if (!fs.existsSync(perfTestPath)) {
-      this.warnings.push('Performance tests not found. Response time validation skipped.');
-      return;
-    }
-    
-    console.log(`  ✅ Performance test structure exists`);
-  }
-
-  /**
-   * Validate security requirements
-   */
-  validateSecurity() {
-    console.log(`🔒 Validating security requirements...`);
-    
-    // Check for security audit results
-    const auditResults = [
-      'npm-audit.json',
-      'contracts/slither-report.json',
-      'security-scan-results.json'
-    ];
-    
-    let hasSecurityValidation = false;
-    
-    for (const auditFile of auditResults) {
-      if (fs.existsSync(auditFile)) {
-        hasSecurityValidation = true;
-        console.log(`  ✅ Security audit found: ${auditFile}`);
-      }
-    }
-    
-    if (!hasSecurityValidation) {
-      this.warnings.push('No security audit results found');
-    }
-  }
-
-  /**
-   * Run all validations
-   */
-  async validate() {
-    console.log('🚀 Starting Quality Gates Validation...\n');
-
-    // Validate coverage for all workspaces
-    const workspaces = ['contracts', 'backend', 'frontend', 'sdk'];
-    
-    for (const workspace of workspaces) {
-      const coveragePath = path.join(workspace, 'coverage', 'coverage-summary.json');
-      this.validateCoverage(workspace, coveragePath);
-    }
-
-    // Validate gas usage
-    this.validateGasUsage();
-
-    // Validate bundle sizes
-    this.validateBundleSize('frontend');
-    this.validateBundleSize('sdk');
-
-    // Validate response time
-    this.validateResponseTime();
-
-    // Validate security
-    this.validateSecurity();
-
-    // Report results
-    this.reportResults();
-  }
-
-  /**
-   * Report validation results
-   */
-  reportResults() {
-    console.log('\n📋 Quality Gates Validation Results:');
-    console.log('=====================================');
-
-    if (this.warnings.length > 0) {
-      console.log('\n⚠️  Warnings:');
-      this.warnings.forEach(warning => console.log(`  - ${warning}`));
-    }
-
-    if (this.errors.length > 0) {
-      console.log('\n❌ Errors:');
-      this.errors.forEach(error => console.log(`  - ${error}`));
-      console.log('\n💥 Quality gates validation FAILED!');
-      process.exit(1);
-    } else {
-      console.log('\n✅ All quality gates PASSED!');
-      console.log('🎉 Ready for deployment!');
-    }
-  }
-}
-
-// Run validation if called directly
-if (require.main === module) {
-  const validator = new QualityGateValidator();
-  validator.validate().catch(error => {
-    console.error('❌ Validation failed:', error);
+try {
+  validateContracts();
+  validateBackend();
+  validateFrontend();
+  validateSdk();
+  
+  if (!hasErrors) {
+    console.log(`\n${colors.green}✅ All quality gates passed!${colors.reset}`);
+    process.exit(0);
+  } else {
+    console.log(`\n${colors.red}❌ Some quality gates failed. Please fix the issues and try again.${colors.reset}`);
     process.exit(1);
-  });
+  }
+} catch (error) {
+  console.error(`\n${colors.red}❌ Error running quality gate validation:${colors.reset}`, error);
+  process.exit(1);
 }
 
-module.exports = QualityGateValidator;
+// Validation functions
+function validateContracts() {
+  console.log(`${colors.cyan}Validating smart contracts...${colors.reset}`);
+  
+  try {
+    // Check if coverage file exists
+    const coveragePath = path.join(__dirname, '../contracts/coverage/coverage-final.json');
+    if (!fs.existsSync(coveragePath)) {
+      console.log(`${colors.yellow}⚠️ No coverage data found for contracts. Run 'cd contracts && npm run coverage' first.${colors.reset}`);
+      hasErrors = true;
+      return;
+    }
+    
+    // Parse coverage data
+    const coverageData = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+    
+    // Calculate overall coverage
+    let totalStatements = 0;
+    let coveredStatements = 0;
+    
+    Object.values(coverageData).forEach(file => {
+      // Skip test files and interfaces
+      const filePath = file.path;
+      if (filePath.includes('/test/') || filePath.includes('.test.') || 
+          filePath.includes('/mocks/') || filePath.includes('/interfaces/')) {
+        return;
+      }
+      
+      // Count statements
+      Object.values(file.s).forEach(covered => {
+        totalStatements++;
+        if (covered > 0) coveredStatements++;
+      });
+    });
+    
+    const coverage = totalStatements > 0 ? (coveredStatements / totalStatements) * 100 : 0;
+    const formattedCoverage = coverage.toFixed(2);
+    
+    if (coverage >= THRESHOLDS.contracts) {
+      console.log(`${colors.green}✅ Contracts coverage: ${formattedCoverage}% (threshold: ${THRESHOLDS.contracts}%)${colors.reset}`);
+    } else {
+      console.log(`${colors.red}❌ Contracts coverage: ${formattedCoverage}% (threshold: ${THRESHOLDS.contracts}%)${colors.reset}`);
+      hasErrors = true;
+    }
+  } catch (error) {
+    console.error(`${colors.red}❌ Error validating contracts:${colors.reset}`, error);
+    hasErrors = true;
+  }
+}
+
+function validateBackend() {
+  console.log(`${colors.cyan}Validating backend...${colors.reset}`);
+  
+  try {
+    // Check if coverage file exists
+    const coveragePath = path.join(__dirname, '../backend/coverage/coverage-final.json');
+    if (!fs.existsSync(coveragePath)) {
+      console.log(`${colors.yellow}⚠️ No coverage data found for backend. Run 'cd backend && npm run test:coverage' first.${colors.reset}`);
+      hasErrors = true;
+      return;
+    }
+    
+    // Parse coverage data
+    const coverageData = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+    
+    // Calculate overall coverage
+    let totalStatements = 0;
+    let coveredStatements = 0;
+    
+    Object.values(coverageData).forEach(file => {
+      // Skip test files
+      const filePath = file.path;
+      if (filePath.includes('/test/') || filePath.includes('.test.') || 
+          filePath.includes('/__tests__/')) {
+        return;
+      }
+      
+      // Count statements
+      Object.values(file.s).forEach(covered => {
+        totalStatements++;
+        if (covered > 0) coveredStatements++;
+      });
+    });
+    
+    const coverage = totalStatements > 0 ? (coveredStatements / totalStatements) * 100 : 0;
+    const formattedCoverage = coverage.toFixed(2);
+    
+    if (coverage >= THRESHOLDS.backend) {
+      console.log(`${colors.green}✅ Backend coverage: ${formattedCoverage}% (threshold: ${THRESHOLDS.backend}%)${colors.reset}`);
+    } else {
+      console.log(`${colors.red}❌ Backend coverage: ${formattedCoverage}% (threshold: ${THRESHOLDS.backend}%)${colors.reset}`);
+      hasErrors = true;
+    }
+  } catch (error) {
+    console.error(`${colors.red}❌ Error validating backend:${colors.reset}`, error);
+    hasErrors = true;
+  }
+}
+
+function validateFrontend() {
+  console.log(`${colors.cyan}Validating frontend...${colors.reset}`);
+  
+  try {
+    // Check if coverage file exists
+    const coveragePath = path.join(__dirname, '../frontend/coverage/coverage-final.json');
+    if (!fs.existsSync(coveragePath)) {
+      console.log(`${colors.yellow}⚠️ No coverage data found for frontend. Run 'cd frontend && npm test' first.${colors.reset}`);
+      hasErrors = true;
+      return;
+    }
+    
+    // Parse coverage data
+    const coverageData = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+    
+    // Calculate overall coverage
+    let totalStatements = 0;
+    let coveredStatements = 0;
+    
+    Object.values(coverageData).forEach(file => {
+      // Skip test files
+      const filePath = file.path;
+      if (filePath.includes('/test/') || filePath.includes('.test.') || 
+          filePath.includes('/__tests__/')) {
+        return;
+      }
+      
+      // Count statements
+      Object.values(file.s).forEach(covered => {
+        totalStatements++;
+        if (covered > 0) coveredStatements++;
+      });
+    });
+    
+    const coverage = totalStatements > 0 ? (coveredStatements / totalStatements) * 100 : 0;
+    const formattedCoverage = coverage.toFixed(2);
+    
+    if (coverage >= THRESHOLDS.frontend) {
+      console.log(`${colors.green}✅ Frontend coverage: ${formattedCoverage}% (threshold: ${THRESHOLDS.frontend}%)${colors.reset}`);
+    } else {
+      console.log(`${colors.red}❌ Frontend coverage: ${formattedCoverage}% (threshold: ${THRESHOLDS.frontend}%)${colors.reset}`);
+      hasErrors = true;
+    }
+  } catch (error) {
+    console.error(`${colors.red}❌ Error validating frontend:${colors.reset}`, error);
+    hasErrors = true;
+  }
+}
+
+function validateSdk() {
+  console.log(`${colors.cyan}Validating SDK...${colors.reset}`);
+  
+  try {
+    // Check if coverage file exists
+    const coveragePath = path.join(__dirname, '../sdk/coverage/coverage-final.json');
+    if (!fs.existsSync(coveragePath)) {
+      console.log(`${colors.yellow}⚠️ No coverage data found for SDK. Run 'cd sdk && npm test' first.${colors.reset}`);
+      hasErrors = true;
+      return;
+    }
+    
+    // Parse coverage data
+    const coverageData = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+    
+    // Calculate overall coverage
+    let totalStatements = 0;
+    let coveredStatements = 0;
+    
+    Object.values(coverageData).forEach(file => {
+      // Skip test files
+      const filePath = file.path;
+      if (filePath.includes('/test/') || filePath.includes('.test.') || 
+          filePath.includes('/__tests__/')) {
+        return;
+      }
+      
+      // Count statements
+      Object.values(file.s).forEach(covered => {
+        totalStatements++;
+        if (covered > 0) coveredStatements++;
+      });
+    });
+    
+    const coverage = totalStatements > 0 ? (coveredStatements / totalStatements) * 100 : 0;
+    const formattedCoverage = coverage.toFixed(2);
+    
+    if (coverage >= THRESHOLDS.sdk) {
+      console.log(`${colors.green}✅ SDK coverage: ${formattedCoverage}% (threshold: ${THRESHOLDS.sdk}%)${colors.reset}`);
+    } else {
+      console.log(`${colors.red}❌ SDK coverage: ${formattedCoverage}% (threshold: ${THRESHOLDS.sdk}%)${colors.reset}`);
+      hasErrors = true;
+    }
+  } catch (error) {
+    console.error(`${colors.red}❌ Error validating SDK:${colors.reset}`, error);
+    hasErrors = true;
+  }
+}

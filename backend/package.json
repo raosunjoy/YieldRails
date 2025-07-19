@@ -15,6 +15,8 @@
     "test:integration": "jest --config jest.integration.config.js",
     "test:e2e": "jest --config jest.e2e.config.js",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "test:coverage:all": "npm run test:coverage && npm run test:integration -- --coverage && npm run test:e2e -- --coverage",
+    "test:ci": "npm run test:coverage:all && node ../scripts/validate-quality-gates.js",
     "lint": "eslint src test --ext .ts",
     "lint:fix": "eslint src test --ext .ts --fix",
     "clean": "rm -rf dist coverage",

@@ -125,6 +125,17 @@ jobs:
           JWT_SECRET: test_jwt_secret
           API_KEY: test_api_key
       
+      - name: Run E2E tests
+        run: cd backend && npm run test:e2e
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yieldrails_e2e_test
+          REDIS_URL: redis://localhost:6379/3
+          JWT_SECRET: test_jwt_secret
+          API_KEY: test_api_key
+          CHAINALYSIS_API_KEY: test-chainalysis-key
+          CIRCLE_API_KEY: test-circle-key
+          MOONPAY_API_KEY: test-moonpay-key
+      
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3
         with:
@@ -181,9 +192,40 @@ jobs:
           directory: ./sdk/coverage
           flags: sdk
 
+  quality-gates:
+    name: Quality Gates
+    needs: [test-contracts, test-backend, test-frontend, test-sdk]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Download coverage reports
+        uses: actions/download-artifact@v3
+        with:
+          path: ./coverage-reports
+      
+      - name: Copy coverage reports to appropriate locations
+        run: |
+          mkdir -p contracts/coverage
+          mkdir -p backend/coverage
+          mkdir -p frontend/coverage
+          mkdir -p sdk/coverage
+          cp -r coverage-reports/contracts-coverage/* contracts/coverage/ || true
+          cp -r coverage-reports/backend-coverage/* backend/coverage/ || true
+          cp -r coverage-reports/frontend-coverage/* frontend/coverage/ || true
+          cp -r coverage-reports/sdk-coverage/* sdk/coverage/ || true
+      
+      - name: Validate quality gates
+        run: node scripts/validate-quality-gates.js
+
   build:
     name: Build
-    needs: [lint, test-contracts, test-backend, test-frontend, test-sdk]
+    needs: [lint, quality-gates]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
