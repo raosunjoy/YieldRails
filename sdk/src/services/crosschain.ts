@@ -9,6 +9,13 @@ import {
   BridgeEstimate,
   LiquidityInfo,
   BridgeStatus,
+  BridgeTransactionDetail,
+  BridgeTransactionHistory,
+  ValidatorInfo,
+  MonitoringMetrics,
+  LiquidityPool,
+  BridgeAnalytics,
+  ChainInfo
 } from '../types/crosschain';
 import { ChainName, TokenSymbol, PaginatedResponse, PaginationParams } from '../types/common';
 
@@ -23,160 +30,191 @@ export class CrossChainService {
    * Initiate a cross-chain bridge transaction
    */
   public async initiateBridge(request: BridgeRequest): Promise<BridgeTransaction> {
-    return this.apiClient.post<BridgeTransaction>('/api/crosschain/bridge', request);
+    const response = await this.apiClient.post('/api/crosschain/bridge', request);
+    return response.data;
   }
 
   /**
    * Get bridge transaction by ID
    */
   public async getBridgeTransaction(transactionId: string): Promise<BridgeTransaction> {
-    return this.apiClient.get<BridgeTransaction>(`/api/crosschain/transactions/${transactionId}`);
+    const response = await this.apiClient.get(`/api/crosschain/transaction/${transactionId}`);
+    return response.data;
   }
 
   /**
-   * Get bridge transaction history
+   * Get comprehensive bridge transaction status
    */
-  public async getBridgeHistory(params?: PaginationParams & {
-    status?: BridgeStatus;
-    sourceChain?: ChainName;
-    destinationChain?: ChainName;
-    fromDate?: string;
-    toDate?: string;
-  }): Promise<PaginatedResponse<BridgeTransaction>> {
-    const queryParams = new URLSearchParams();
-    
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.offset) queryParams.append('offset', params.offset.toString());
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.status) queryParams.append('status', params.status);
-    if (params?.sourceChain) queryParams.append('sourceChain', params.sourceChain);
-    if (params?.destinationChain) queryParams.append('destinationChain', params.destinationChain);
-    if (params?.fromDate) queryParams.append('fromDate', params.fromDate);
-    if (params?.toDate) queryParams.append('toDate', params.toDate);
+  public async getBridgeTransactionStatus(transactionId: string): Promise<BridgeTransactionDetail> {
+    const response = await this.apiClient.get(`/api/crosschain/transaction/${transactionId}/status`);
+    return response.data;
+  }
 
-    const url = `/api/crosschain/transactions${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    return this.apiClient.get<PaginatedResponse<BridgeTransaction>>(url);
+  /**
+   * Get bridge transaction history with updates
+   */
+  public async getBridgeTransactionHistory(transactionId: string): Promise<BridgeTransactionHistory> {
+    const response = await this.apiClient.get(`/api/crosschain/transaction/${transactionId}/history`);
+    return response.data;
+  }
+
+  /**
+   * Get user bridge transactions
+   */
+  public async getUserBridgeTransactions(
+    address: string,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<PaginatedResponse<BridgeTransaction>> {
+    const response = await this.apiClient.get(`/api/crosschain/user/${address}/transactions`, {
+      params: { limit, offset }
+    });
+    return response.data;
   }
 
   /**
    * Get bridge fee and time estimate
    */
   public async getBridgeEstimate(
-    sourceChain: ChainName,
-    destinationChain: ChainName,
-    token: TokenSymbol,
-    amount: string
+    sourceChain: string,
+    destinationChain: string,
+    amount: string | number,
+    token: string = 'USDC'
   ): Promise<BridgeEstimate> {
-    return this.apiClient.post<BridgeEstimate>('/api/crosschain/estimate', {
+    const response = await this.apiClient.post('/api/crosschain/estimate', {
       sourceChain,
       destinationChain,
-      token,
-      amount,
+      amount: amount.toString(),
+      token
     });
+    return response.data;
   }
 
   /**
-   * Check liquidity availability for bridge
+   * Process a bridge transaction
    */
-  public async checkLiquidity(
-    chain: ChainName,
-    token: TokenSymbol,
-    amount?: string
-  ): Promise<LiquidityInfo> {
-    return this.apiClient.post<LiquidityInfo>('/api/crosschain/liquidity/check', {
-      chain,
-      token,
-      amount,
-    });
-  }
-
-  /**
-   * Get supported bridge routes
-   */
-  public async getSupportedRoutes(): Promise<Array<{
-    sourceChain: ChainName;
-    destinationChain: ChainName;
-    supportedTokens: TokenSymbol[];
-    estimatedDuration: number;
-    isActive: boolean;
-  }>> {
-    return this.apiClient.get('/api/crosschain/routes');
+  public async processBridgeTransaction(transactionId: string): Promise<{ transactionId: string }> {
+    const response = await this.apiClient.post(`/api/crosschain/transaction/${transactionId}/process`);
+    return response.data;
   }
 
   /**
    * Cancel a pending bridge transaction
    */
-  public async cancelBridge(transactionId: string, reason?: string): Promise<BridgeTransaction> {
-    return this.apiClient.post<BridgeTransaction>(`/api/crosschain/transaction/${transactionId}/cancel`, {
-      reason,
-    });
+  public async cancelBridgeTransaction(transactionId: string): Promise<{ transactionId: string }> {
+    const response = await this.apiClient.post(`/api/crosschain/transaction/${transactionId}/cancel`);
+    return response.data;
   }
 
   /**
    * Retry a failed bridge transaction
    */
-  public async retryBridge(transactionId: string): Promise<BridgeTransaction> {
-    return this.apiClient.post<BridgeTransaction>(`/api/crosschain/transaction/${transactionId}/retry`);
+  public async retryBridgeTransaction(transactionId: string): Promise<{ transactionId: string }> {
+    const response = await this.apiClient.post(`/api/crosschain/transaction/${transactionId}/retry`);
+    return response.data;
   }
 
   /**
-   * Get bridge transaction events
+   * Get supported chains for bridging
    */
-  public async getBridgeEvents(transactionId: string): Promise<Array<{
-    id: string;
-    type: string;
-    data: Record<string, any>;
-    createdAt: string;
-  }>> {
-    return this.apiClient.get(`/api/crosschain/transactions/${transactionId}/events`);
+  public async getSupportedChains(): Promise<ChainInfo[]> {
+    const response = await this.apiClient.get('/api/crosschain/supported-chains');
+    return response.data.chains;
+  }
+
+  /**
+   * Get liquidity pools information
+   */
+  public async getLiquidityPools(): Promise<LiquidityPool[]> {
+    const response = await this.apiClient.get('/api/crosschain/liquidity');
+    return response.data.pools;
+  }
+
+  /**
+   * Check liquidity availability for a bridge transaction
+   */
+  public async checkLiquidityAvailability(
+    sourceChain: string,
+    destinationChain: string,
+    amount: string | number,
+    token: string = 'USDC'
+  ): Promise<LiquidityInfo> {
+    const response = await this.apiClient.post('/api/crosschain/liquidity/check', {
+      sourceChain,
+      destinationChain,
+      amount: amount.toString(),
+      token
+    });
+    return response.data;
   }
 
   /**
    * Get bridge analytics
    */
-  public async getBridgeAnalytics(
-    fromDate?: string,
-    toDate?: string
-  ): Promise<{
-    totalTransactions: number;
-    completedTransactions: number;
-    failedTransactions: number;
-    totalVolume: string;
-    totalFees: string;
-    totalYieldGenerated: string;
-    averageCompletionTime: number;
-    routePerformance: Array<{
-      sourceChain: ChainName;
-      destinationChain: ChainName;
-      transactionCount: number;
-      successRate: number;
-      averageTime: number;
-    }>;
-  }> {
-    const queryParams = new URLSearchParams();
-    
-    if (fromDate) queryParams.append('fromDate', fromDate);
-    if (toDate) queryParams.append('toDate', toDate);
-
-    const url = `/api/crosschain/analytics${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    return this.apiClient.get(url);
+  public async getBridgeAnalytics(timeRange: 'day' | 'week' | 'month' = 'day'): Promise<BridgeAnalytics> {
+    const response = await this.apiClient.get('/api/crosschain/analytics', {
+      params: { timeRange }
+    });
+    return response.data;
   }
 
   /**
-   * Get real-time bridge status
+   * Get active validators information
    */
-  public async getBridgeStatus(): Promise<{
-    totalLiquidity: string;
-    activeRoutes: number;
-    averageCompletionTime: number;
-    systemHealth: 'healthy' | 'degraded' | 'down';
-    chainStatus: Array<{
-      chain: ChainName;
-      isActive: boolean;
-      blockHeight: number;
-      lastUpdate: string;
-    }>;
+  public async getActiveValidators(): Promise<{
+    validators: ValidatorInfo[];
+    count: number;
+    requiredForConsensus: number;
   }> {
-    return this.apiClient.get('/api/crosschain/status');
+    const response = await this.apiClient.get('/api/crosschain/validators');
+    return response.data;
+  }
+
+  /**
+   * Get bridge monitoring metrics (admin only)
+   */
+  public async getMonitoringMetrics(): Promise<MonitoringMetrics> {
+    const response = await this.apiClient.get('/api/crosschain/monitoring');
+    return response.data;
+  }
+
+  /**
+   * Subscribe to real-time updates for a transaction
+   */
+  public async subscribeToTransactionUpdates(
+    transactionId: string,
+    subscriberId: string
+  ): Promise<{ transactionId: string; subscriberId: string }> {
+    const response = await this.apiClient.post(`/api/crosschain/subscribe/${transactionId}`, {
+      subscriberId
+    });
+    return response.data;
+  }
+
+  /**
+   * Unsubscribe from real-time updates for a transaction
+   */
+  public async unsubscribeFromTransactionUpdates(
+    transactionId: string,
+    subscriberId: string
+  ): Promise<{ transactionId: string; subscriberId: string }> {
+    const response = await this.apiClient.delete(`/api/crosschain/subscribe/${transactionId}`, {
+      data: { subscriberId }
+    });
+    return response.data;
+  }
+
+  /**
+   * Get all updates for a subscriber
+   */
+  public async getSubscriberUpdates(
+    subscriberId: string
+  ): Promise<{
+    subscriberId: string;
+    updates: any[];
+    count: number;
+  }> {
+    const response = await this.apiClient.get(`/api/crosschain/subscriber/${subscriberId}/updates`);
+    return response.data;
   }
 }

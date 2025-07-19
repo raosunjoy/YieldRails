@@ -812,3 +812,101 @@ export class CrossChainService {
         return new Date(transaction.createdAt.getTime() + estimatedTime);
     }
 }
+    /**
+     * Get comprehensive bridge transaction status with detailed information
+     */
+    public async getBridgeStatus(transactionId: string): Promise<any | null> {
+        try {
+            const transaction = await this.getBridgeTransaction(transactionId);
+            if (!transaction) {
+                return null;
+            }
+
+            // Get transaction history with updates
+            const history = await this.getTransactionHistory(transactionId);
+            
+            // Get validation status if available
+            let validationResult = null;
+            try {
+                validationResult = await this.getValidationResult(transactionId);
+            } catch (error) {
+                logger.debug('No validation result found for transaction', { transactionId });
+            }
+            
+            // Calculate progress percentage based on status
+            const progressMap: Record<string, number> = {
+                'INITIATED': 10,
+                'BRIDGE_PENDING': 25,
+                'SOURCE_CONFIRMED': 50,
+                'DESTINATION_PENDING': 75,
+                'COMPLETED': 100,
+                'FAILED': 0
+            };
+            
+            const progress = progressMap[transaction.status] || 0;
+            
+            // Calculate time elapsed
+            const createdAt = new Date(transaction.createdAt).getTime();
+            const now = Date.now();
+            const elapsedMs = now - createdAt;
+            const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
+            
+            // Calculate estimated completion time
+            const estimatedTimeMs = this.estimateBridgeTime(
+                transaction.sourceChain,
+                transaction.destinationChain
+            );
+            const estimatedMinutes = Math.floor(estimatedTimeMs / (1000 * 60));
+            const remainingMinutes = Math.max(0, estimatedMinutes - elapsedMinutes);
+            
+            // Get external transaction details if available
+            let externalDetails = null;
+            if (transaction.externalTransactionId && transaction.token === 'USDC') {
+                try {
+                    externalDetails = await this.circleCCTPService.getTransferStatus(transaction.externalTransactionId);
+                } catch (error) {
+                    logger.debug('Failed to get external transaction details', { 
+                        transactionId, 
+                        externalId: transaction.externalTransactionId 
+                    });
+                }
+            }
+            
+            // Construct comprehensive status object
+            return {
+                transactionId: transaction.id,
+                status: transaction.status,
+                progress,
+                sourceChain: transaction.sourceChain,
+                destinationChain: transaction.destinationChain,
+                sourceAmount: transaction.sourceAmount,
+                destinationAmount: transaction.destinationAmount,
+                token: transaction.token,
+                bridgeFee: transaction.bridgeFee,
+                estimatedYield: transaction.estimatedYield,
+                actualYield: transaction.actualYield,
+                senderAddress: transaction.senderAddress,
+                recipientAddress: transaction.recipientAddress,
+                paymentId: transaction.paymentId,
+                sourceTransactionHash: transaction.sourceTransactionHash,
+                destinationTransactionHash: transaction.destinationTransactionHash,
+                externalTransactionId: transaction.externalTransactionId,
+                externalDetails,
+                validation: validationResult,
+                history: history.updates,
+                timing: {
+                    createdAt: transaction.createdAt,
+                    updatedAt: transaction.updatedAt,
+                    completedAt: transaction.completedAt,
+                    sourceConfirmedAt: transaction.sourceConfirmedAt,
+                    destinationConfirmedAt: transaction.destinationConfirmedAt,
+                    elapsedMinutes,
+                    estimatedMinutes,
+                    remainingMinutes
+                }
+            };
+        } catch (error) {
+            logger.error('Failed to get bridge status', { error, transactionId });
+            return null;
+        }
+    }

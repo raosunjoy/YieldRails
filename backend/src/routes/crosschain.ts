@@ -635,4 +635,278 @@ router.post('/liquidity/check', [
     }
 });
 
-export { router as crossChainRouter };
+export { router as crossChainRouter };/
+**
+ * GET /api/crosschain/transaction/:transactionId/history
+ * Get detailed transaction history with updates
+ */
+router.get('/transaction/:transactionId/history', authMiddleware, validateTransactionId, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            logApiMetrics('/api/crosschain/transaction/:id/history', 'GET', 400, Date.now() - startTime, req.user?.id);
+            return res.status(400).json({
+                error: 'Validation Error',
+                details: errors.array()
+            });
+        }
+
+        const { transactionId } = req.params;
+        const history = await crossChainService.getTransactionHistory(transactionId);
+
+        if (!history) {
+            logApiMetrics('/api/crosschain/transaction/:id/history', 'GET', 404, Date.now() - startTime, req.user?.id);
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Bridge transaction history not found'
+            });
+        }
+
+        logApiMetrics('/api/crosschain/transaction/:id/history', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: history
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error getting bridge transaction history ${req.params.transactionId}:`, error);
+        logApiMetrics('/api/crosschain/transaction/:id/history', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get bridge transaction history',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/crosschain/validators
+ * Get active validators information
+ */
+router.get('/validators', async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const validators = crossChainService.getActiveValidators();
+
+        logApiMetrics('/api/crosschain/validators', 'GET', 200, Date.now() - startTime);
+
+        res.json({
+            success: true,
+            data: {
+                validators,
+                count: validators.length,
+                requiredForConsensus: Math.ceil(validators.length * 0.67) // 2/3 majority
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error('Error getting validators:', error);
+        logApiMetrics('/api/crosschain/validators', 'GET', 500, Date.now() - startTime);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get validators',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/crosschain/monitoring
+ * Get bridge monitoring metrics
+ */
+router.get('/monitoring', authMiddleware, async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        // Check if user has admin role
+        if (req.user?.role !== 'admin') {
+            logApiMetrics('/api/crosschain/monitoring', 'GET', 403, Date.now() - startTime, req.user?.id);
+            return res.status(403).json({
+                error: 'Forbidden',
+                message: 'Admin access required for monitoring metrics'
+            });
+        }
+
+        const metrics = crossChainService.getMonitoringMetrics();
+
+        logApiMetrics('/api/crosschain/monitoring', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: metrics
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error('Error getting monitoring metrics:', error);
+        logApiMetrics('/api/crosschain/monitoring', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get monitoring metrics',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * POST /api/crosschain/subscribe/:transactionId
+ * Subscribe to real-time updates for a transaction
+ */
+router.post('/subscribe/:transactionId', authMiddleware, validateTransactionId, [
+    body('subscriberId').isString().notEmpty().withMessage('Subscriber ID is required')
+], async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            logApiMetrics('/api/crosschain/subscribe/:id', 'POST', 400, Date.now() - startTime, req.user?.id);
+            return res.status(400).json({
+                error: 'Validation Error',
+                details: errors.array()
+            });
+        }
+
+        const { transactionId } = req.params;
+        const { subscriberId } = req.body;
+
+        // Check if transaction exists
+        const transaction = await crossChainService.getBridgeTransaction(transactionId);
+        if (!transaction) {
+            logApiMetrics('/api/crosschain/subscribe/:id', 'POST', 404, Date.now() - startTime, req.user?.id);
+            return res.status(404).json({
+                error: 'Not Found',
+                message: 'Bridge transaction not found'
+            });
+        }
+
+        // Subscribe to updates
+        crossChainService.subscribeToTransactionUpdates(transactionId, subscriberId);
+
+        logApiMetrics('/api/crosschain/subscribe/:id', 'POST', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            message: 'Subscribed to transaction updates',
+            data: {
+                transactionId,
+                subscriberId
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error subscribing to transaction updates ${req.params.transactionId}:`, error);
+        logApiMetrics('/api/crosschain/subscribe/:id', 'POST', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to subscribe to transaction updates',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * DELETE /api/crosschain/subscribe/:transactionId
+ * Unsubscribe from real-time updates for a transaction
+ */
+router.delete('/subscribe/:transactionId', authMiddleware, validateTransactionId, [
+    body('subscriberId').isString().notEmpty().withMessage('Subscriber ID is required')
+], async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            logApiMetrics('/api/crosschain/subscribe/:id', 'DELETE', 400, Date.now() - startTime, req.user?.id);
+            return res.status(400).json({
+                error: 'Validation Error',
+                details: errors.array()
+            });
+        }
+
+        const { transactionId } = req.params;
+        const { subscriberId } = req.body;
+
+        // Unsubscribe from updates
+        crossChainService.unsubscribeFromTransactionUpdates(transactionId, subscriberId);
+
+        logApiMetrics('/api/crosschain/subscribe/:id', 'DELETE', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            message: 'Unsubscribed from transaction updates',
+            data: {
+                transactionId,
+                subscriberId
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error unsubscribing from transaction updates ${req.params.transactionId}:`, error);
+        logApiMetrics('/api/crosschain/subscribe/:id', 'DELETE', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to unsubscribe from transaction updates',
+            details: err.message
+        });
+    }
+});
+
+/**
+ * GET /api/crosschain/subscriber/:subscriberId/updates
+ * Get all updates for a subscriber
+ */
+router.get('/subscriber/:subscriberId/updates', authMiddleware, [
+    param('subscriberId').isString().notEmpty().withMessage('Subscriber ID is required')
+], async (req: Request, res: Response) => {
+    const startTime = Date.now();
+
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            logApiMetrics('/api/crosschain/subscriber/:id/updates', 'GET', 400, Date.now() - startTime, req.user?.id);
+            return res.status(400).json({
+                error: 'Validation Error',
+                details: errors.array()
+            });
+        }
+
+        const { subscriberId } = req.params;
+        const updates = await crossChainService.getSubscriberUpdates(subscriberId);
+
+        logApiMetrics('/api/crosschain/subscriber/:id/updates', 'GET', 200, Date.now() - startTime, req.user?.id);
+
+        res.json({
+            success: true,
+            data: {
+                subscriberId,
+                updates,
+                count: updates.length
+            }
+        });
+
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(`Error getting subscriber updates ${req.params.subscriberId}:`, error);
+        logApiMetrics('/api/crosschain/subscriber/:id/updates', 'GET', 500, Date.now() - startTime, req.user?.id);
+
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to get subscriber updates',
+            details: err.message
+        });
+    }
+});
