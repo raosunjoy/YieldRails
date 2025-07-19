@@ -1,0 +1,551 @@
+# Production Alerting Rules for YieldRails Platform
+# Prometheus Alerting Rules Configuration
+
+groups:
+  # System Health Alerts
+  - name: system-health
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for more than 5 minutes on {{ $labels.instance }}"
+
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Critical CPU usage detected"
+          description: "CPU usage is above 95% for more than 2 minutes on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 85% for more than 5 minutes on {{ $labels.instance }}"
+
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Critical memory usage detected"
+          description: "Memory usage is above 95% for more than 2 minutes on {{ $labels.instance }}"
+
+      - alert: HighDiskUsage
+        expr: (1 - node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "High disk usage detected"
+          description: "Disk usage is above 85% on {{ $labels.device }} for {{ $labels.instance }}"
+
+      - alert: CriticalDiskUsage
+        expr: (1 - node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"}) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Critical disk usage detected"
+          description: "Disk usage is above 95% on {{ $labels.device }} for {{ $labels.instance }}"
+
+  # Application Performance Alerts
+  - name: application-performance
+    interval: 30s
+    rules:
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="yieldrails-backend"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High API latency detected"
+          description: "95th percentile latency is above 2 seconds for {{ $labels.method }} {{ $labels.endpoint }}"
+
+      - alert: CriticalAPILatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="yieldrails-backend"}[5m])) > 5
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Critical API latency detected"
+          description: "95th percentile latency is above 5 seconds for {{ $labels.method }} {{ $labels.endpoint }}"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{job="yieldrails-backend",status=~"5.."}[5m]) / rate(http_requests_total{job="yieldrails-backend"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is above 5% for {{ $labels.method }} {{ $labels.endpoint }}"
+
+      - alert: CriticalErrorRate
+        expr: rate(http_requests_total{job="yieldrails-backend",status=~"5.."}[5m]) / rate(http_requests_total{job="yieldrails-backend"}[5m]) > 0.10
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is above 10% for {{ $labels.method }} {{ $labels.endpoint }}"
+
+      - alert: LowThroughput
+        expr: rate(http_requests_total{job="yieldrails-backend"}[5m]) < 1
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Low API throughput detected"
+          description: "API throughput is below 1 RPS for more than 10 minutes"
+
+  # Database Alerts
+  - name: database-alerts
+    interval: 30s
+    rules:
+      - alert: DatabaseConnectionHigh
+        expr: sum(pg_stat_activity_count) by (instance) > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High database connections"
+          description: "Database connections above 80 on {{ $labels.instance }}"
+
+      - alert: DatabaseConnectionCritical
+        expr: sum(pg_stat_activity_count) by (instance) > 95
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Critical database connections"
+          description: "Database connections above 95 on {{ $labels.instance }}"
+
+      - alert: DatabaseSlowQueries
+        expr: rate(pg_stat_activity_max_tx_duration_seconds[5m]) > 30
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Slow database queries detected"
+          description: "Long-running queries detected on {{ $labels.instance }}"
+
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Database is down"
+          description: "PostgreSQL database is down on {{ $labels.instance }}"
+
+  # Redis Alerts
+  - name: redis-alerts
+    interval: 30s
+    rules:
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage above 85% on {{ $labels.instance }}"
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Redis is down"
+          description: "Redis server is down on {{ $labels.instance }}"
+
+      - alert: RedisSlowlog
+        expr: increase(redis_slowlog_length[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Redis slow queries detected"
+          description: "More than 10 slow queries in Redis on {{ $labels.instance }}"
+
+  # Business Logic Alerts
+  - name: business-alerts
+    interval: 60s
+    rules:
+      - alert: HighFailedPayments
+        expr: rate(yieldrails_payments_failed_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High failed payment rate"
+          description: "Failed payment rate is above 10% for the last 5 minutes"
+
+      - alert: CriticalFailedPayments
+        expr: rate(yieldrails_payments_failed_total[5m]) > 0.2
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Critical failed payment rate"
+          description: "Failed payment rate is above 20% for the last 2 minutes"
+
+      - alert: YieldCalculationErrors
+        expr: rate(yieldrails_yield_calculation_errors_total[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High yield calculation errors"
+          description: "Yield calculation error rate is above 5%"
+
+      - alert: LowYieldOpportunities
+        expr: yieldrails_yield_opportunities_available < 5
+        for: 15m
+        labels:
+          severity: warning
+          team: strategy
+        annotations:
+          summary: "Low yield opportunities available"
+          description: "Less than 5 yield opportunities available for the last 15 minutes"
+
+      - alert: SmartContractErrors
+        expr: rate(yieldrails_smart_contract_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: blockchain
+        annotations:
+          summary: "Smart contract errors detected"
+          description: "Smart contract interaction errors detected"
+
+  # Security Alerts
+  - name: security-alerts
+    interval: 30s
+    rules:
+      - alert: HighLoginFailures
+        expr: rate(yieldrails_login_failures_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High login failure rate"
+          description: "Login failure rate is above 10 per minute"
+
+      - alert: SuspiciousActivity
+        expr: rate(yieldrails_suspicious_activity_total[5m]) > 1
+        for: 1m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Suspicious activity detected"
+          description: "Suspicious activity rate is above 1 per minute"
+
+      - alert: UnauthorizedAPIAccess
+        expr: rate(http_requests_total{status="401"}[5m]) > 50
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High unauthorized access attempts"
+          description: "High rate of 401 responses indicating unauthorized access attempts"
+
+      - alert: RateLimitExceeded
+        expr: rate(http_requests_total{status="429"}[5m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High rate limit violations"
+          description: "High rate of 429 responses indicating rate limit violations"
+
+  # External Service Alerts
+  - name: external-services
+    interval: 60s
+    rules:
+      - alert: ExternalServiceDown
+        expr: probe_success{job="blackbox"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "External service is down"
+          description: "External service {{ $labels.instance }} is not responding"
+
+      - alert: ExternalServiceSlowResponse
+        expr: probe_duration_seconds{job="blackbox"} > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "External service slow response"
+          description: "External service {{ $labels.instance }} is responding slowly"
+
+      - alert: ChainlinkOracleStale
+        expr: time() - chainlink_oracle_last_update > 3600
+        for: 1m
+        labels:
+          severity: critical
+          team: blockchain
+        annotations:
+          summary: "Chainlink oracle data is stale"
+          description: "Chainlink oracle data hasn't been updated for over 1 hour"
+
+  # Blockchain Alerts
+  - name: blockchain-alerts
+    interval: 60s
+    rules:
+      - alert: HighGasPrices
+        expr: ethereum_gas_price_gwei > 100
+        for: 10m
+        labels:
+          severity: warning
+          team: blockchain
+        annotations:
+          summary: "High gas prices detected"
+          description: "Ethereum gas prices are above 100 gwei for 10 minutes"
+
+      - alert: BlockchainNodeDown
+        expr: up{job="ethereum-node"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: blockchain
+        annotations:
+          summary: "Blockchain node is down"
+          description: "Ethereum node {{ $labels.instance }} is down"
+
+      - alert: BlockSyncLag
+        expr: ethereum_block_number - ethereum_latest_block > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: blockchain
+        annotations:
+          summary: "Blockchain sync lag detected"
+          description: "Blockchain node is lagging behind by more than 10 blocks"
+
+  # Kubernetes Alerts
+  - name: kubernetes-alerts
+    interval: 30s
+    rules:
+      - alert: PodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Pod is crash looping"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is crash looping"
+
+      - alert: PodNotReady
+        expr: kube_pod_status_ready{condition="false"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Pod not ready"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is not ready"
+
+      - alert: DeploymentReplicasMismatch
+        expr: kube_deployment_spec_replicas != kube_deployment_status_available_replicas
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Deployment replicas mismatch"
+          description: "Deployment {{ $labels.deployment }} has mismatched replicas"
+
+      - alert: NodeNotReady
+        expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Kubernetes node not ready"
+          description: "Node {{ $labels.node }} is not ready"
+
+  # ML/AI Service Alerts
+  - name: ml-service-alerts
+    interval: 60s
+    rules:
+      - alert: MLModelInferenceLatency
+        expr: histogram_quantile(0.95, rate(ml_model_inference_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: ml
+        annotations:
+          summary: "High ML model inference latency"
+          description: "ML model inference latency is above 2 seconds"
+
+      - alert: MLModelAccuracyDrift
+        expr: ml_model_accuracy < 0.8
+        for: 10m
+        labels:
+          severity: warning
+          team: ml
+        annotations:
+          summary: "ML model accuracy drift detected"
+          description: "ML model accuracy has dropped below 80%"
+
+      - alert: YieldOptimizationErrors
+        expr: rate(yieldrails_yield_optimization_errors_total[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          team: ml
+        annotations:
+          summary: "High yield optimization errors"
+          description: "Yield optimization error rate is above 10%"
+
+---
+# Alertmanager Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'smtp.gmail.com:587'
+      smtp_from: 'alerts@yieldrails.com'
+      smtp_auth_username: 'alerts@yieldrails.com'
+      smtp_auth_password: '$SMTP_PASSWORD'
+
+    route:
+      group_by: ['alertname', 'severity']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'default'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'critical-alerts'
+        group_wait: 0s
+        repeat_interval: 5m
+      - match:
+          team: security
+        receiver: 'security-team'
+        group_wait: 0s
+        repeat_interval: 1m
+      - match:
+          team: blockchain
+        receiver: 'blockchain-team'
+      - match:
+          team: ml
+        receiver: 'ml-team'
+
+    receivers:
+    - name: 'default'
+      email_configs:
+      - to: 'alerts@yieldrails.com'
+        subject: 'YieldRails Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Labels: {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}
+          {{ end }}
+
+    - name: 'critical-alerts'
+      email_configs:
+      - to: 'oncall@yieldrails.com,cto@yieldrails.com'
+        subject: 'CRITICAL: YieldRails Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          🚨 CRITICAL ALERT 🚨
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Time: {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          {{ end }}
+      slack_configs:
+      - api_url: '$SLACK_WEBHOOK_URL'
+        channel: '#alerts-critical'
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+
+    - name: 'security-team'
+      email_configs:
+      - to: 'security@yieldrails.com'
+        subject: 'SECURITY ALERT: {{ .GroupLabels.alertname }}'
+      slack_configs:
+      - api_url: '$SLACK_WEBHOOK_URL'
+        channel: '#security-alerts'
+        title: '🔒 SECURITY: {{ .GroupLabels.alertname }}'
+
+    - name: 'blockchain-team'
+      email_configs:
+      - to: 'blockchain@yieldrails.com'
+        subject: 'Blockchain Alert: {{ .GroupLabels.alertname }}'
+      slack_configs:
+      - api_url: '$SLACK_WEBHOOK_URL'
+        channel: '#blockchain-alerts'
+        title: '⛓️ BLOCKCHAIN: {{ .GroupLabels.alertname }}'
+
+    - name: 'ml-team'
+      email_configs:
+      - to: 'ml@yieldrails.com'
+        subject: 'ML/AI Alert: {{ .GroupLabels.alertname }}'
+      slack_configs:
+      - api_url: '$SLACK_WEBHOOK_URL'
+        channel: '#ml-alerts'
+        title: '🤖 ML/AI: {{ .GroupLabels.alertname }}'
+
+    inhibit_rules:
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['alertname', 'instance']
